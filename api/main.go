@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
 )
 
 // API represents the Helix platform API server
@@ -30,7 +31,7 @@ func NewAPI(version, host, grpcPort, httpPort string) *API {
 // RegisterRoute registers an HTTP route handler
 func (a *API) RegisterRoute(pattern string, handler http.Handler) {
 	a.routes[pattern] = handler
-	fmt.Printf "API route registered: %s\n", pattern)
+	fmt.Printf("API route registered: %s\n", pattern)
 }
 
 // Start starts the API server

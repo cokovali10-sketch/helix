@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"sync"
 	"testing"
 	"time"
@@ -10,12 +9,10 @@ import (
 func TestGateway_RegisterTenant(t *testing.T) {
 	gateway := NewGateway()
 	
-	// Register a new tenant
 	gateway.RegisterTenant("test-tenant", 1000)
 	
-	// Try to ingest event for registered tenant
 	event := Event{
-		Timestamp: time.Now().Unix(),
+		Timestamp: time.Now(),
 		Source:    "test-source",
 		Metrics:   map[string]float64{"cpu": 50.0},
 		Tags:      map[string]string{"host": "test-host"},
@@ -31,9 +28,8 @@ func TestGateway_RegisterTenant(t *testing.T) {
 func TestGateway_UnregisteredTenant(t *testing.T) {
 	gateway := NewGateway()
 	
-	// Try to ingest event for unregistered tenant (should use default)
 	event := Event{
-		Timestamp: time.Now().Unix(),
+		Timestamp: time.Now(),
 		Source:    "test-source",
 		Metrics:   map[string]float64{"cpu": 50.0},
 		Tags:      map[string]string{"host": "test-host"},
@@ -48,17 +44,16 @@ func TestGateway_UnregisteredTenant(t *testing.T) {
 
 func TestGateway_RateLimit(t *testing.T) {
 	gateway := NewGateway()
-	gateway.RegisterTenant("rate-limited", 2) // Only 2 events per second
+	gateway.RegisterTenant("rate-limited", 2)
 	
 	event := Event{
-		Timestamp: time.Now().Unix(),
+		Timestamp: time.Now(),
 		Source:    "test-source",
 		Metrics:   map[string]float64{"cpu": 50.0},
 		Tags:      map[string]string{"host": "test-host"},
 		Tenant:    "rate-limited",
 	}
 	
-	// First two should succeed
 	success1 := gateway.Ingest(event)
 	success2 := gateway.Ingest(event)
 	
@@ -66,7 +61,6 @@ func TestGateway_RateLimit(t *testing.T) {
 		t.Fatal("First two events should succeed")
 	}
 	
-	// Third should fail (rate limited)
 	success3 := gateway.Ingest(event)
 	if success3 {
 		t.Fatal("Third event should be rate limited")
@@ -93,7 +87,7 @@ func TestGateway_ConcurrentTenants(t *testing.T) {
 			
 			for i := 0; i < eventsPerGoroutine; i++ {
 				event := Event{
-					Timestamp: time.Now().Unix(),
+					Timestamp: time.Now(),
 					Source:    "test-source",
 					Metrics:   map[string]float64{"cpu": 50.0},
 					Tags:      map[string]string{"host": "test-host"},
@@ -110,11 +104,10 @@ func TestGateway_ConcurrentTenants(t *testing.T) {
 func TestGateway_DefaultTenantRateLimit(t *testing.T) {
 	gateway := NewGateway()
 	
-	// Default tenant should have rate limit of 10000
 	successCount := 0
 	for i := 0; i < 10050; i++ {
 		event := Event{
-			Timestamp: time.Now().Unix(),
+			Timestamp: time.Now(),
 			Source:    "test-source",
 			Metrics:   map[string]float64{"cpu": 50.0},
 			Tags:      map[string]string{"host": "test-host"},
@@ -125,7 +118,6 @@ func TestGateway_DefaultTenantRateLimit(t *testing.T) {
 		}
 	}
 	
-	// Should have rate limited at some point
 	if successCount >= 10050 {
 		t.Log("All events succeeded (rate limit may be per-second)")
 	}

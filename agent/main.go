@@ -4,9 +4,9 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -44,6 +44,8 @@ type BackpressureManager struct {
 	events chan Event
 	// quit signals the manager to stop
 	quit chan struct{}
+	// cancel cancels the context passed to Start
+	cancel context.CancelFunc
 	// wg waits for all goroutines to finish
 	wg sync.WaitGroup
 	// rateLimiter controls the maximum processing rate
@@ -85,7 +87,7 @@ func (rl *RateLimiter) allow() bool {
 	elapsed := now.Sub(rl.lastRefillTime)
 	
 	// Calculate how many tokens to refill
-	tokensToAdd := int(elapsed.Seconds() * rl.eventsPerSecond)
+	tokensToAdd := int(elapsed.Seconds() * float64(rl.eventsPerSecond))
 	if tokensToAdd > 0 {
 		rl.tokens = min(rl.tokens + tokensToAdd, rl.burstSize)
 		rl.lastRefillTime = now
@@ -128,32 +130,20 @@ func (bpm *BackpressureManager) UsePlugin(plugin Plugin) {
 	defer bpm.mu.Unlock()
 	
 	// Insert in priority order (lower priority first)
-	bpm.mu.Lock()
-	defer bpm.mu.Unlock()
-	
-	// Find insertion point based on priority
-	insertIdx := 0
+	insertIdx := len(bpm.plugins)
 	for i, p := range bpm.plugins {
 		if plugin.Priority() < p.Priority() {
 			insertIdx = i
 			break
 		}
-		insertIdx = len(bpm.plugins)
 	}
 	
-	// If we didn't break out of the loop, insert at the end
-	if insertIdx >= len(bpm.plugins) || (insertIdx > 0 && bpm.plugins[insertIdx-1].Priority() <= plugin.Priority()) {
-		// Find the right position
-		for i, p := range bpm.plugins {
-			if p.Priority() > plugin.Priority() {
-				insertIdx = i
-				break
-			}
-			insertIdx = len(bpm.plugins)
-		}
+	// Insert at the right position
+	if insertIdx > 0 && insertIdx < len(bpm.plugins) {
+		bpm.plugins = append(bpm.plugins[:insertIdx], append([]Plugin{plugin}, bpm.plugins[insertIdx:]...)...)
+	} else {
+		bpm.plugins = append(bpm.plugins, plugin)
 	}
-	
-	bpm.plugins = append(bpm.plugins[:insertIdx], append([]Plugin{plugin}, bpm.plugins[insertIdx:]...)...)
 }
 
 // Process processes an event through all plugins with backpressure
@@ -204,10 +194,13 @@ func (bpm *BackpressureManager) processLoop(ctx context.Context) {
 			currentEvent := event
 			for _, plugin := range plugins {
 				var err error
-				currentEvent, err = plugin.Process(ctx, &currentEvent)
+				result, err := plugin.Process(ctx, &currentEvent)
 				if err != nil {
 					fmt.Printf("Plugin %s error: %v\n", plugin.Name(), err)
 					// Continue processing or stop based on error type
+				}
+				if result != nil {
+					currentEvent = *result
 				}
 			}
 			
@@ -219,13 +212,17 @@ func (bpm *BackpressureManager) processLoop(ctx context.Context) {
 
 // Start begins the backpressure manager
 func (bpm *BackpressureManager) Start(ctx context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
+	bpm.cancel = cancel
 	bpm.wg.Add(1)
 	go bpm.processLoop(ctx)
 }
 
 // Stop gracefully shuts down the manager
 func (bpm *BackpressureManager) Stop() {
-	close(bpm.quit)
+	if bpm.cancel != nil {
+		bpm.cancel()
+	}
 	bpm.wg.Wait()
 	close(bpm.events)
 }
@@ -336,6 +333,8 @@ func NewAgent(maxRate int) *Agent {
 	// Start the backpressure manager with context
 	ctx, cancel := context.WithCancel(context.Background())
 	bm.Start(ctx)
+	// Store cancel function for later use (in production, would be used for graceful shutdown)
+	_ = cancel
 	
 	return agent
 }
@@ -344,6 +343,7 @@ func NewAgent(maxRate int) *Agent {
 func (a *Agent) ProcessEvent(ctx context.Context, event *Event) error {
 	a.mu.Lock()
 	processed := atomic.AddInt64(&a.eventsProcessed, 1)
+	_ = processed
 	a.mu.Unlock()
 	
 	err := a.bp.Process(ctx, event)

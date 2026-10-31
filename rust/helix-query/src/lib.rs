@@ -6,7 +6,6 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
 // Query Language Types
@@ -15,8 +14,8 @@ use std::sync::Arc;
 /// QueryType represents the type of a query expression
 #[derive(Debug, Clone, PartialEq)]
 pub enum QueryType {
-    InstantVector,
-    RangeVector,
+    InstantVector { labels: BTreeMap<String, String> },
+    RangeVector { labels: BTreeMap<String, String>, duration: String },
     Scalar,
     String,
     VectorSelector,

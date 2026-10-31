@@ -124,6 +124,7 @@ impl WAL {
             self.flush()?;
         }
         
+        self.written += len;
         Ok(len)
     }
     

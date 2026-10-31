@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestClient_IngestEvent(t *testing.T) {
@@ -119,6 +120,10 @@ func TestClient_ListTenants(t *testing.T) {
 
 func TestClient_SearchEvents(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/events/search" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"events":[{"id":"1","timestamp":1700000000,"source":"test","metrics":{"cpu":50.0},"tags":{"host":"test"},"tenant":"test"}]}`))
@@ -127,7 +132,7 @@ func TestClient_SearchEvents(t *testing.T) {
 	
 	client := NewClient(server.URL, "test-key")
 	
-	events, err := client.SearchEvents(context.Background(), "cpu > 50", map[string]string{"host": "test"})
+	events, err := client.SearchEvents(context.Background(), "cpu", map[string]string{"host": "test"})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}

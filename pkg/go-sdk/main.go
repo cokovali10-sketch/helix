@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // Client represents a Helix platform client
@@ -209,9 +210,9 @@ func (c *Client) Metrics(ctx context.Context) (map[string]int64, error) {
 	}
 	
 	return map[string]int64{
-		"events_received":   result.EventsReceived,
-		"events_processed":  result.EventsProcessed,
-		"active_tenants":    int(result.ActiveTenants),
+		"events_received":    result.EventsReceived,
+		"events_processed":   result.EventsProcessed,
+		"active_tenants":     int64(result.ActiveTenants),
 		"memory_usage_bytes": result.MemoryUsageBytes,
 	}, nil
 }

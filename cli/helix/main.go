@@ -47,7 +47,7 @@ func (c *CLI) Run() error {
 // runQuery executes a query against the Helix platform
 func (c *CLI) runQuery() error {
 	fmt.Println("Running query command")
-	fmt.Printf "Helix CLI v%s - Query execution\n", c.version)
+	fmt.Printf("Helix CLI v%s - Query execution\n", c.version)
 	// TODO: Implement query execution
 	return nil
 }
@@ -55,7 +55,7 @@ func (c *CLI) runQuery() error {
 // runIngest ingests events from a file or stream
 func (c *CLI) runIngest() error {
 	fmt.Println("Running ingest command")
-	fmt.Printf "Helix CLI v%s - Event ingestion\n", c.version)
+	fmt.Printf("Helix CLI v%s - Event ingestion\n", c.version)
 	// TODO: Implement event ingestion
 	return nil
 }
@@ -63,7 +63,7 @@ func (c *CLI) runIngest() error {
 // runStatus shows the status of the Helix platform
 func (c *CLI) runStatus() error {
 	fmt.Println("Running status command")
-	fmt.Printf "Helix CLI v%s - System status\n", c.version)
+	fmt.Printf("Helix CLI v%s - System status\n", c.version)
 	// TODO: Implement status check
 	return nil
 }
