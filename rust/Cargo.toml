@@ -2,6 +2,7 @@
 members = [
     "helix-storage",
     "helix-query",
+    "helix-alerting",
 ]
 resolver = "2"
 

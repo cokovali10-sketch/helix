@@ -7,6 +7,9 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+pub mod functions;
+pub use functions::*;
+
 // ---------------------------------------------------------------------------
 // Query Language Types
 // ---------------------------------------------------------------------------
