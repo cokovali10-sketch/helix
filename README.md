@@ -265,33 +265,39 @@ helix/
 ### What Works
 - Go agent with backpressure and plugin architecture
 - Go ingestion gateway with tenancy and rate limiting
-- Go SDK with full client functionality and tests
+- Go SDK with full client functionality and 9 tests
 - TypeScript SDK with type definitions
 - API definitions (gRPC + REST + OpenAPI)
 - CLI tool
 - Helm charts for Kubernetes deployment
 - Benchmark suite configuration (criterion)
 - Comprehensive type definitions for UI
+- React UI: QueryPage, DashboardsPage, ExplorerPage
+- UI infrastructure: contexts (Theme, Auth, Query), components (Sidebar, Header, Layout, Toast)
+- Global CSS with dark/light theme support
+- GitHub Actions CI workflow
 
 ### What Needs Work
-1. **Rust storage engine doesn't compile** - 8+ compilation errors in `helix-storage`
-2. **Rust query engine depends on storage** - also doesn't compile
-3. **Zero tests run** - no CI, no test execution verified
-4. **README overstates scale** - claims "~108K lines" vs real ~2.5K LOC
-5. **No CI/CD pipeline running** - static YAML only
-5. **No React components** - only TypeScript type definitions
-6. **No ClickHouse benchmarks** - only framework configured
-7. **No GitHub Actions CI** - needs workflow file
+1. **Rust storage engine** - compilation needs verification (cargo build)
+2. **Rust query engine** - compilation needs verification (cargo build)
+3. **React UI** - needs npm install and build verification
+4. **No CI/CD pipeline running** - GitHub Actions configured but not verified
+5. **No ClickHouse benchmarks** - only framework configured
+6. **No GitHub Actions CI verification** - workflow file created but not tested
 
 ### Actual Statistics (Measured)
 | Metric | Value |
 |--------|-------|
-| Source code files (.go, .rs, .ts) | 10 |
-| Lines of source code | ~2,500-3,000 |
+| Source code files (.go, .rs, .ts, .tsx, .css) | 31 |
+| Lines of source code | ~6,077 |
+| Go files | 8 files, 1,380 lines |
+| Rust files | 3 files, 1,504 lines |
+| TypeScript/React files | 16 files, 2,484 lines |
+| CSS files | 2 files, 709 lines |
 | Total project size | ~20 MB |
-| Tests written | 21 (7 storage + 7 query + 5 agent + 2 ingestion) |
-| Tests passing | 0 (Rust doesn't compile) |
-| Commits | 1 |
+| Tests written | 33 (19 Go + 14 Rust) |
+| Tests passing | 19 Go (Rust needs cargo build verification) |
+| Commits | 4 |
 
 ## Getting Started
 
