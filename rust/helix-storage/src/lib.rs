@@ -13,6 +13,7 @@ pub mod compression;
 pub mod retention;
 pub mod compaction;
 pub mod sstable_reader;
+pub mod metrics;
 
 // ---------------------------------------------------------------------------
 // Configuration
