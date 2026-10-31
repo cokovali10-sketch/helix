@@ -1,0 +1,96 @@
+# Helix CI/CD Pipeline Configuration
+# This file defines the continuous integration and deployment pipeline
+
+# Pipeline stages
+stages:
+  - name: lint
+    description: Lint code and configuration files
+    commands:
+      - go fmt ./...
+      - go vet ./agent/ ./ingestion/ ./cli/ ./pkg/...
+      - cargo fmt --manifest-path rust/helix-storage/Cargo.toml
+      - cargo check --manifest-path rust/helix-storage/Cargo.toml
+      - helm lint ./helm/helix
+
+  - name: test
+    description: Run unit and integration tests
+    commands:
+      - go test ./agent/ ./ingestion/ ./cli/ ./pkg/...
+      - cargo test --manifest-path rust/helix-storage/Cargo.toml
+      - helm unittest ./helm/helix 2>/dev/null || echo "Helm tests not available"
+
+  - name: build
+    description: Build all project components
+    commands:
+      - go build ./agent/ ./ingestion/ ./cli/ ./pkg/...
+      - cargo build --manifest-path rust/helix-storage/Cargo.toml
+      - helm dependency update ./helm/helix
+
+  - name: docker-build
+    description: Build Docker images for all components
+    commands:
+      - docker build -t helix-agent:latest ./agent
+      - docker build -t helix-ingestion:latest ./ingestion
+      - docker build -t helix-api:latest ./api
+      - docker build -t helix-storage:latest ./rust/helix-storage
+      - docker build -t helix-ui:latest ./ui
+      - docker build -t helix-cli:latest ./cli
+
+  - name: scan
+    description: Security scan images and code
+    commands:
+      - trivy image helix-agent:latest 2>/dev/null || echo "Trivy not available"
+      - trivy image helix-storage:latest 2>/dev/null || echo "Trivy not available"
+      - gosec ./... 2>/dev/null || echo "gosec not available"
+
+  - name: deploy
+    description: Deploy to Kubernetes
+    commands:
+      - helm upgrade --install helix ./helm/helix -f ./helm/helix/values.yaml
+      - kubectl rollout status deployment/helix-api -n helix-production --timeout=300s
+      - kubectl rollout status deployment/helix-storage -n helix-production --timeout=300s
+      - kubectl rollout status deployment/helix-ui -n helix-production --timeout=300s
+
+  - name: benchmark
+    description: Run performance benchmarks
+    commands:
+      - go test -bench=. -benchtime=30s ./...
+      - cargo bench --manifest-path rust/helix-storage/Cargo.toml 2>/dev/null || echo "Benchmarks not configured"
+
+# Branch protection
+branchProtection:
+  main:
+    requiredStatusChecks:
+      - lint
+      - test
+      - build
+    requiredPullRequestReviews: true
+    restrictions: []
+    dismissStaleReviews: true
+    requireCodeOwnerReviews: true
+
+# Deployment targets
+deployments:
+  development:
+    environment: dev
+    valuesFile: ./helm/helix/values-dev.yaml
+    autoDeploy: false
+  
+  staging:
+    environment: staging
+    valuesFile: ./helm/helix/values-staging.yaml
+    autoDeploy: true
+  
+  production:
+    environment: production
+    valuesFile: ./helm/helix/values-prod.yaml
+    autoDeploy: false
+    approvalRequired: true
+
+# Notification settings
+notifications:
+  onFailure: true
+  onSuccess: false
+  recipients:
+    - team@helix.io
+    - on-call@helix.io

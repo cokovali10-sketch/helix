@@ -1,0 +1,35 @@
+# Go binaries
+*.exe
+*.test
+
+# Go build artifacts
+/bin
+/pkg/mod
+
+# Rust build artifacts
+target/
+**.rlib
+**.so
+**.dylib
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerinit
+
+# Helm
+charts/*.tgz
+
+# Benchmarks
+criterion-report/
+
+# Temporary
+*.tmp

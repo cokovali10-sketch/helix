@@ -1,0 +1,254 @@
+{{- $fullname := include "helix.fullname" . -}}
+{{- $release := .Release -}}
+{{- $chart := .Chart -}}
+
+{{- /* Create namespace if specified */ -}}
+{{- if .Values.namespace }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.namespace }}
+  labels:
+    {{- if .Values.namespaceLabels }}
+    {{- include "helix.labels" . | nindent 4 }}
+    {{- end }}
+{{- end }}
+
+{{- /* Helper templates */ -}}
+
+{{- define "helix.labels" -}}
+app.kubernetes.io/name: {{ include "helix.fullname" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/version: {{ .Chart.AppVersion }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end -}}
+
+{{- define "helix.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "helix.fullname" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
+{{- define "helix.fullname" -}}
+{{- if .Values.fullnameOverride }}-{{ .Values.fullnameOverride }}{{- end }}
+{{- else }}-{{ .Release.Name }}-{{ .Chart.Name }}{{- end -}}
+{{- end -}}
+
+{{- /* ConfigMap for API configuration */ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-config
+  labels:
+    {{- include "helix.labels" . | nindent 4 }}
+data:
+  {{- $cfg := .Values.api -}}
+  APP_ENV: "{{ $cfg.env | default "production" }}"
+  APP_DEBUG: "{{ $cfg.debug | default "false" }}"
+  APP_LOG_LEVEL: "{{ $cfg.logLevel | default "info" }}"
+  DATABASE_URL: "postgresql://{{ .Values.postgresql.auth.postgresqlUsername }}:{{ .Values.postgresql.auth.postgresqlPassword }}@{{ include "postgresql.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:5432/helix"
+  REDIS_URL: "redis://{{ include "redis.fullname" . }}:6379"
+  NATS_URL: "nats://{{ include "natss.fullname" . }}:4222"
+  GIN_MODE: "{{ $cfg.ginMode | default "release" }}"
+
+{{- /* API Deployment */ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-api
+  labels:
+    {{- include "helix.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.api.replicas | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "helix.selectorLabels" . | nindent 4 }}
+  template:
+    metadata:
+      labels:
+        {{- include "helix.selectorLabels" . | nindent 4 }}
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.global.imagePrefix }}/api:{{ .Chart.AppVersion }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: {{ .Values.api.servicePort }}
+            - containerPort: {{ .Values.api.grpcPort }} protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+          resources:
+            {{- toYaml .Values.api.resources | nindent 6 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.api.servicePort }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.api.servicePort }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          command: ["/helix-api"]
+          args: ["--config=/config/configmap/"]
+
+{{- /* API Service */ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-api
+  labels:
+    {{- include "helix.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.api.serviceType | default "ClusterIP" }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: {{ .Values.api.servicePort }}
+    - name: grpc
+      port: {{ .Values.api.grpcPort }}
+      targetPort: {{ .Values.api.grpcPort }}
+  selector:
+    {{- include "helix.selectorLabels" . | nindent 4 }}
+
+{{- /* Storage Deployment (Rust TSDB) */ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-storage
+  labels:
+    {{- include "helix.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.storage.replicas | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "helix.selectorLabels" . | nindent 4 }}
+  template:
+    metadata:
+      labels:
+        {{- include "helix.selectorLabels" . | nindent 4 }}
+    spec:
+      containers:
+        - name: storage
+          image: "{{ .Values.global.imagePrefix }}/storage:{{ .Chart.AppVersion }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+          resources:
+            {{- toYaml .Values.storage.resources | nindent 6 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+{{- /* NATS Streaming for ingestion gateway */ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-nats
+  labels:
+    {{- include "helix.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.natss.serviceType | default "ClusterIP" }}
+  ports:
+    - name: nats
+      port: 4222
+      targetPort: 4222
+  selector:
+    {{- include "helix.selectorLabels" . | nindent 4 }}
+
+{{- /* UI Deployment */ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-ui
+  labels:
+    {{- include "helix.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.ui.replicas | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "helix.selectorLabels" . | nindent 4 }}
+  template:
+    metadata:
+      labels:
+        {{- include "helix.selectorLabels" . | nindent 4 }}
+    spec:
+      containers:
+        - name: ui
+          image: "{{ .Values.global.imagePrefix }}/ui:{{ .Chart.AppVersion }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: {{ .Values.ui.servicePort }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+          resources:
+            {{- toYaml .Values.ui.resources | nindent 6 }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.ui.servicePort }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.ui.servicePort }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+{{- /* UI Service */ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-ui
+  labels:
+    {{- include "helix.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.ui.serviceType | default "LoadBalancer" }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: {{ .Values.ui.servicePort }}
+  selector:
+    {{- include "helix.selectorLabels" . | nindent 4 }}
+
+{{- /* Alertmanager configuration */ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-alertmanager
+  labels:
+    {{- include "helix.labels" . | nindent 4 }}
+data:
+  alertmanager.yml:
+    global:
+      resolve_timeout: 5m
+      smtp_smarthost: "{{ .Values.alerting.smtp.smarthost | default "localhost:25" }}"
+      smtp_from: "alertmanager@helix.io"
+    receivers:
+      - name: "default"
+        webhook_configs:
+          - url: "http://{{ $fullname }}-api:8080/webhook"
+    routes:
+      - match: "alertname = {{ .Values.alerting.alertname | default "Alert"}}"
+        receiver: "default"
+        routes:
+          - match: "{{ .Values.alerting.routeLabel | default "severity"}} = critical"
+            receiver: "webhook"
+          - receiver: "null"
+            continue: false

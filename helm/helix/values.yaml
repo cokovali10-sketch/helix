@@ -1,0 +1,138 @@
+# Global configuration
+global:
+  imagePrefix: helix
+  imagePullPolicy: IfNotPresent
+
+# Resources defaults applied to all components unless overridden
+commonResources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Namespace configuration
+namespace: helix-production
+namespaceLabels:
+  environment: production
+  team: observability
+
+# PostgreSQL configuration for metadata storage
+postgresql:
+  enabled: true
+  auth:
+    postgresqlPassword: helix-password
+    postgresqlUsername: helix
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      limits:
+        cpu: 250m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+# NATS configuration for ingestion gateway
+natss:
+  enabled: true
+  cluster:
+    size: 1
+  auth:
+    enabled: false
+  persistence:
+    enabled: true
+    size: 1Gi
+  serviceType: ClusterIP
+
+# API configuration
+api:
+  enabled: true
+  replicas: 2
+  serviceType: ClusterIP
+  servicePort: 8080
+  grpcPort: 50051
+  ginMode: release
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Storage engine configuration
+storage:
+  enabled: true
+  replicas: 2
+  image: rustls/helix-storage:latest
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+# Agent configuration
+agent:
+  enabled: true
+  replicas: 1
+  image: golang:1.21-alpine
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Web UI configuration
+ui:
+  enabled: true
+  replicas: 1
+  serviceType: LoadBalancer
+  servicePort: 80
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Alerting configuration
+alerting:
+  enabled: true
+  smtp:
+    smarthost: "smtp.example.com:587"
+    from: "alerts@helix.io"
+  alertname: "Alert"
+  routeLabel: "severity"
+
+# Additional components
+additionalComponents:
+  # Redis for caching
+  redis:
+    enabled: false
+    # Use existing Redis instance
+    
+  # Prometheus for metrics
+  prometheus:
+    enabled: false
+    # Use existing Prometheus instance
+    
+  # Grafana for visualization
+  grafana:
+    enabled: false
+    # Use existing Grafana instance
+
+# Feature flags
+featureFlags:
+  enableTLS: false
+  enableAuth: false
+  enableRateLimiting: true
+  enableTenancy: true

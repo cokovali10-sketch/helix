@@ -1,0 +1,124 @@
+apiVersion: v2
+name: helix
+description: Helix observability platform chart
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+dependencies:
+  - name: postgres
+    version: 15.x.x
+    repository: https://charts.bitnami.com/bitnami
+  - name: natss
+    version: 2.x.x
+    repository: https://charts.bitnami.com/bitnami
+
+# Main chart configuration
+schemaVersion: 2.0.0
+
+# Values configuration
+values:
+  fullnameOverride: helix
+
+  # Global configuration
+  global:
+    imagePrefix: helix
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  # PostgreSQL configuration for metadata storage
+  postgres:
+    enabled: true
+    auth:
+      postgresqlPassword: helix-password
+      postgresqlUsername: helix
+    primary:
+      persistence:
+        enabled: true
+        size: 10Gi
+      resources:
+        limits:
+          cpu: 250m
+          memory: 256Mi
+        requests:
+          cpu: 100m
+          memory: 128Mi
+
+  # NATS configuration for ingestion gateway
+  natss:
+    enabled: true
+    cluster:
+      size: 1
+    auth:
+      enabled: false
+    persistence:
+      enabled: true
+      size: 1Gi
+
+  # API configuration
+  api:
+    enabled: true
+    serviceType: ClusterIP
+    servicePort: 8080
+    grpcPort: 50051
+    resources:
+      limits:
+        cpu: 250m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  # Storage engine configuration
+  storage:
+    enabled: true
+    image: rustls/helix-storage:latest
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  # Agent configuration
+  agent:
+    enabled: true
+    image: golang:1.21
+    resources:
+      limits:
+        cpu: 250m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  # Web UI configuration
+  ui:
+    enabled: true
+    serviceType: LoadBalancer
+    servicePort: 80
+    resources:
+      limits:
+        cpu: 250m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  # Alerting configuration
+  alerting:
+    enabled: true
+    dsldirectory: /etc/helix/alerting
+    resources:
+      limits:
+        cpu: 250m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
