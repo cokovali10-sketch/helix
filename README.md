@@ -2,6 +2,12 @@
 
 A SOC (Security Operations Center) observability platform that continues ApexGuard's event generation with full storage, analytics, and querying capabilities. Built as a custom TSDB replacing ClickHouse/Prometheus.
 
+## Project Status
+
+**Current Status**: Active Development / Early Alpha
+
+This is an aspirational project with good architectural foundations but significant implementation gaps. See [Honest Assessment](#honest-assessment) below.
+
 ## Project Structure
 
 ```
@@ -24,25 +30,25 @@ helix/
 └── helm/                   # Helm charts for K8s deployment
 ```
 
-## Components (~108K lines total)
+## Components
 
-### 1. Agent Collection (Go)
+### 1. Agent Collection (Go) ✅ Implemented
 - Event collection with backpressure mechanisms
 - Plugin architecture (health check, metrics extraction, tenant assignment)
 - Token bucket rate limiting
 - Buffered channel for burst traffic absorption
 
-**Key files**: `agent/main.go`
+**Key files**: `agent/main.go`, `agent/collector_test.go`
 
-### 2. Ingestion Gateway (Go)
+### 2. Ingestion Gateway (Go) ✅ Implemented
 - Tenancy support (multiple tenant isolation)
 - Per-tenant rate limiting
 - NATS/Kafka integration for message queuing
 - Event validation and routing
 
-**Key files**: `ingestion/main.go`
+**Key files**: `ingestion/main.go`, `ingestion/gateway_test.go`
 
-### 3. Storage Engine (Rust)
+### 3. Storage Engine (Rust) ⚠️ In Progress
 - **WAL (Write-Ahead Log)**: Durability for ingested events
   - Sequence-based file rotation
   - Configurable max file size with automatic flush
@@ -66,13 +72,14 @@ helix/
   - Query interface with multi-storage lookup
 
 **Key files**: `rust/helix-storage/src/lib.rs`
+**Status**: 7 tests written, needs compilation fixes
 
-### 4. Query Engine (Rust)
+### 4. Query Engine (Rust) ⚠️ In Progress
 - **Parser**: Full Helix query language parser
   - Instant and range vector parsing
   - Label matching with regex support
   - Duration parsing (e.g., `30s`, `1m`, `5m`)
-  - 15+ test cases covering all parser branches
+  - 7 test cases
   
 - **Scheduler**: Query execution planning
   - Query plan generation based on query type
@@ -88,6 +95,7 @@ helix/
 - **Public API**: `execute_query(expression, data)` entry point
 
 **Key files**: `rust/helix-query/src/lib.rs`
+**Status**: 7 tests written, needs compilation fixes
 
 ### 5. Query Language
 - PromQL-like syntax with extensions
@@ -96,15 +104,15 @@ helix/
 - Duration expressions (1m, 5m, 30s, 2h)
 - Built-in functions (rate, top_k, histogram_quantile, sum by, etc.)
 
-### 6. Go SDK
+### 6. Go SDK ✅ Implemented
 - Full-featured client for platform interaction
 - Event ingestion API
 - Query execution API
 - Tenant and metadata management
 
-**Key files**: `pkg/go-sdk/main.go`
+**Key files**: `pkg/go-sdk/main.go`, `pkg/go-sdk/sdk_test.go`
 
-### 7. TypeScript SDK
+### 7. TypeScript SDK ✅ Implemented
 - Type-safe JavaScript/TypeScript client
 - Full-type-safe query execution
 - Query hooks and result types
@@ -112,7 +120,7 @@ helix/
 
 **Key files**: `pkg/typescript-sdk/index.ts`
 
-### 8. API Definitions (Go)
+### 8. API Definitions (Go) ✅ Implemented
 - gRPC service definitions
 - REST JSON API endpoints
 - OpenAPI 3.0 specification
@@ -120,16 +128,17 @@ helix/
 
 **Key files**: `api/main.go`
 
-### 9. Web UI (React/TypeScript)
-- Query editor with syntax highlighting
-- Dashboard composition and layout management
-- Event explorer with filtering and tagging
-- Alert management interface
-- Alert manager with DSL, eval, dedup, routing
+### 9. Web UI (React/TypeScript) ⚠️ Types Only
+- Query editor with syntax highlighting (types defined)
+- Dashboard composition and layout management (types defined)
+- Event explorer with filtering and tagging (types defined)
+- Alert management interface (types defined)
+- Alert manager with DSL, eval, dedup, routing (types defined)
 
 **Key files**: `ui/components/types.ts`
+**Status**: Type definitions only, no React components
 
-### 10. CLI
+### 10. CLI ✅ Implemented
 - Command-line tool for platform operations
 - Query execution
 - Event ingestion
@@ -138,7 +147,7 @@ helix/
 
 **Key files**: `cli/helix/main.go`
 
-### 11. Helm Charts
+### 11. Helm Charts ✅ Implemented
 - Kubernetes manifests for all components
 - Dependencies: PostgreSQL, NATS
 - Values configurations for multiple environments (dev, staging, prod)
@@ -146,7 +155,7 @@ helix/
 
 **Key files**: `helm/helix/`
 
-### 12. CI/CD Pipeline
+### 12. CI/CD Pipeline ⚠️ Config Only
 - Multi-stage pipeline: lint → test → build → deploy → benchmark
 - Branch protection with required status checks
 - Multi-environment deployment (dev, staging, production)
@@ -154,10 +163,11 @@ helix/
 - Notification settings
 
 **Key files**: `ci/pipeline.yaml`
+**Status**: Static YAML, no GitHub Actions workflow
 
-### 13. Performance Benchmarks (criterion)
+### 13. Performance Benchmarks (criterion) ✅ Configured
 - Establishes Helix performance baselines
-- Critical metric: "1 billion events in < 1 second"
+- Critical metric: "1 billion events in < 1 second" (target, not achieved)
 - Benchmark categories: core queries, storage insert, query filtering, large-scale
 - Structured for ClickHouse comparison
 
@@ -176,7 +186,7 @@ helix/
 | Testing | Go test, cargo test, criterion benchmarks |
 | Container | Docker |
 
-## Performance Goals
+## Performance Goals (Targets)
 
 | Metric | Target |
 |--------|--------|
@@ -194,59 +204,94 @@ helix/
 - Basic agent and gateway implementation
 - Storage engine core (WAL + Memtable + SSTable)
 
-### Phase 2: Core Engine ✅
+### Phase 2: Core Engine ⚠️ In Progress
 - WAL implementation with sequence numbering
 - Memtable with BTreeMap and flush triggers
 - SSTable writer with sorting and indexing
 - Storage engine composite architecture
-- Comprehensive test suite (20+ tests)
+- Test suite (7 tests written, needs compilation fixes)
 
 ### Phase 3: Agent & Gateway ✅
 - Go agent with backpressure and plugins
 - Ingestion gateway with tenancy and rate-limiting
 - Rate limiting with token bucket algorithm
 - Burst capacity configuration
+- Tests written
 
 ### Phase 4: SDK & API ✅
 - Go SDK with full client functionality
 - TypeScript SDK with type safety
 - gRPC and REST API definitions
 - Comprehensive type definitions
+- Go SDK tests written
 
-### Phase 5: Deployment ✅
+### Phase 5: Deployment ⚠️ Config Only
 - Helm charts with all Kubernetes manifests
-- CI/CD pipeline configuration
+- CI/CD pipeline configuration (static YAML)
 - Values configurations for multiple environments
 - Linting and validation scripts
 
-### Phase 6: Refinement ✅
-- CI/CD pipeline with multi-stage workflow
+### Phase 6: Refinement ⚠️ Config Only
+- CI/CD pipeline with multi-stage workflow (static YAML)
 - Branch protection and quality gates
 - Multi-environment deployment configuration
 - Security scanning integration
 
-### Phase 7: Query Engine ✅
-- Parser implementation (complete)
-- Scheduler implementation (complete)
-- Vectorized executor (complete)
-- Test suite (15+ tests)
+### Phase 7: Query Engine ⚠️ In Progress
+- Parser implementation (7 tests written)
+- Scheduler implementation
+- Vectorized executor
+- Test suite (7 tests written, needs compilation fixes)
 
-### Phase 8: Benchmarks ✅
-- Benchmark suite creation (complete)
+### Phase 8: Benchmarks ✅ Configured
+- Benchmark suite creation (criterion)
 - Performance goals established
 - ClickHouse comparison framework
 
-### Phase 9: UI Implementation (Upcoming)
+### Phase 9: UI Implementation (Planned)
 - Query editor component
 - Dashboard builder
 - Explorer interface
 - Alert management
 
-### Phase 10: ClickHouse Comparison (Upcoming)
+### Phase 10: ClickHouse Comparison (Planned)
 - Implement same queries on ClickHouse
 - Compare performance metrics
 - Optimize Helix based on findings
 - Publish benchmark results
+
+## Honest Assessment
+
+### What Works
+- Go agent with backpressure and plugin architecture
+- Go ingestion gateway with tenancy and rate limiting
+- Go SDK with full client functionality and tests
+- TypeScript SDK with type definitions
+- API definitions (gRPC + REST + OpenAPI)
+- CLI tool
+- Helm charts for Kubernetes deployment
+- Benchmark suite configuration (criterion)
+- Comprehensive type definitions for UI
+
+### What Needs Work
+1. **Rust storage engine doesn't compile** - 8+ compilation errors in `helix-storage`
+2. **Rust query engine depends on storage** - also doesn't compile
+3. **Zero tests run** - no CI, no test execution verified
+4. **README overstates scale** - claims "~108K lines" vs real ~2.5K LOC
+5. **No CI/CD pipeline running** - static YAML only
+5. **No React components** - only TypeScript type definitions
+6. **No ClickHouse benchmarks** - only framework configured
+7. **No GitHub Actions CI** - needs workflow file
+
+### Actual Statistics (Measured)
+| Metric | Value |
+|--------|-------|
+| Source code files (.go, .rs, .ts) | 10 |
+| Lines of source code | ~2,500-3,000 |
+| Total project size | ~20 MB |
+| Tests written | 21 (7 storage + 7 query + 5 agent + 2 ingestion) |
+| Tests passing | 0 (Rust doesn't compile) |
+| Commits | 1 |
 
 ## Getting Started
 
@@ -256,49 +301,22 @@ helix/
 - Node.js 18+
 - Docker (for local development)
 
-### Quick Start
+### Quick Start (When Compiling)
 
-1. **Start the platform**:
-   ```bash
-   cd helix
-   helm install helix ./helm/helix
-   ```
+```bash
+# Build Rust components (when fixed)
+cd rust && cargo build --release
 
-2. **Ingest events** (Go):
-   ```go
-   import "helix.io/sdk/go"
-   
-   client := helix.NewClient("http://localhost:8080", "api-key")
-   event := helix.Event{
-       Source: "soc-agent",
-       Metrics: map[string]float64{"cpu": 50.0},
-       Tags: map[string]string{"host": "soc-01"},
-       Tenant: "soc-team-a",
-   }
-   client.IngestEvent(context.Background(), &event)
-   ```
+# Build Go components
+go build ./...
 
-3. **Execute queries** (Go):
-   ```go
-   results, err := client.Query(context.Background(), &helix.QueryOptions{
-       Expression: "rate(events[30s])",
-       Tenant: "soc-team-a",
-   })
-   ```
+# Run tests (when fixed)
+cargo test
+go test ./...
 
-4. **Use TypeScript SDK**:
-   ```typescript
-   import { createClient } from 'helix-sdk/typescript';
-   
-   const client = createClient('http://localhost:8080', 'api-key');
-   const results = await client.query({ expression: 'rate(events[30s])' });
-   ```
-
-5. **Run benchmarks**:
-   ```bash
-   cd helix/benches
-   criterion
-   ```
+# Run benchmarks
+cd benches && cargo bench
+```
 
 ## License
 
@@ -307,3 +325,4 @@ Helix is open source software licensed under the Apache License 2.0.
 ## Contact
 
 Project located at: D:\PortfolioProjects\helix
+GitHub: https://github.com/cokovali10-sketch/helix

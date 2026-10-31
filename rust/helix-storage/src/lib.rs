@@ -70,7 +70,7 @@ impl WAL {
         // Ensure WAL directory exists
         fs::create_dir_all(&config.dir)?;
         
-        let path = config.wal_path()?;
+        let path = config.dir.join("wal.log");
         let file = fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -207,7 +207,7 @@ impl Memtable {
     pub fn flush_to_writer(&self, sst_writer: &mut SSTableWriter) -> io::Result<()> {
         let data = self.data.read().unwrap();
         for (key, value) in data.iter() {
-            sst_writer.add_entry(key, value)?;
+            sst_writer.add_entry(key.to_vec(), value.to_vec())?;
         }
         Ok(())
     }
@@ -263,7 +263,7 @@ impl SSTableWriter {
         }
         
         // Write to file
-        let file = fs::File::create(&self.path)?;
+        let mut file = fs::File::create(&self.path)?;
         file.write_all(&serialized)?;
         file.sync_all()?;
         
@@ -293,6 +293,7 @@ impl SSTableWriter {
 // ---------------------------------------------------------------------------
 
 /// SSTable is a immutable sorted string table for long-term storage
+#[derive(Clone)]
 pub struct SSTable {
     path: PathBuf,
     index: BTreeMap<Vec<u8>, u64>, // key -> offset mapping
@@ -400,7 +401,7 @@ impl StorageEngine {
         let sst_path = self.sst_dir.join(format!("{}.sst", self.next_seq));
         self.next_seq += 1;
         
-        let mut writer = SSTableWriter::new(sst_path, &self.sst_config)?;
+        let mut writer = SSTableWriter::new(sst_path.clone(), &self.sst_config)?;
         
         // Flush memtable entries
         self.memtable.flush_to_writer(&mut writer)?;
@@ -425,10 +426,9 @@ impl StorageEngine {
     /// Returns the number of SSTables
     pub fn sstable_count(&self) -> usize {
         // Count .sst files in the sst_dir
-        fs::read_dir(&self.ss_dir)
-            .unwrap_or_default()
-            .filter(|e| e.as_ref().map(|f| f.path().extension().map(|ext| ext == "sst").unwrap_or(false)).unwrap_or(false))
-            .count()
+        fs::read_dir(&self.sst_dir)
+            .map(|rd| rd.filter(|e| e.as_ref().map(|f| f.path().extension().map(|ext| ext == "sst").unwrap_or(false)).unwrap_or(false)).count())
+            .unwrap_or(0)
     }
 }
 
@@ -655,7 +655,7 @@ mod tests {
 // Main entry point
 // ---------------------------------------------------------------------------
 
-fn main() {
+fn main() -> io::Result<()> {
     // Example usage
     let wal_dir = std::path::Path::new("./wal");
     let sst_dir = std::path::Path::new("./sstables");
@@ -704,4 +704,6 @@ fn main() {
     println!("WAL written: {} bytes", storage.wal_written());
     println!("Memtable size: {} bytes", storage.memtable_size());
     println!("SSTable count: {}", storage.sstable_count());
+
+    Ok(())
 }

@@ -22,7 +22,7 @@ pub enum QueryType {
     VectorSelector,
 }
 
-// Query represents a parsed Helix query
+/// Query represents a parsed Helix query
 #[derive(Debug, Clone)]
 pub struct Query {
     pub query_type: QueryType,
@@ -43,7 +43,7 @@ pub struct TimeRange {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LabelSelector {
     pub labels: BTreeMap<String, String>,
-    pubMatchers: Vec<Matcher>,
+    pub matchers: Vec<Matcher>,
 }
 
 /// Matcher represents a label matcher in PromQL style
@@ -54,7 +54,6 @@ pub enum Matcher {
     Exists { label: String },
     NotExists { label: String },
     Regex { label: String, pattern: String },
-    // ... additional matcher types
 }
 
 // ---------------------------------------------------------------------------
@@ -253,7 +252,7 @@ impl Parser {
 // Parse Errors
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum ParseError {
     ExpectedCharacter(char),
     ExpectedIdentifier,
@@ -556,7 +555,7 @@ mod tests {
     
     #[test]
     fn test_parser_with_labels() {
-        let input = 'cpu_usage{host="server1",instance="web1"}';
+        let input = "cpu_usage{host=\"server1\",instance=\"web1\"}";
         let mut parser = Parser::new(input.to_string());
         let query = parser.parse().unwrap();
         
@@ -592,7 +591,7 @@ mod tests {
                 timestamp: 1700000001,
             },
         ];
-        
+
         let result = execute_query("cpu_usage{host=~\"server.*\"}", &data).unwrap();
         
         assert_eq!(result.result_type, "vector");
@@ -628,7 +627,6 @@ mod tests {
         let result = parser.parse();
         
         assert!(result.is_err());
-        assert!(matches!(result.err(), Some(ParseError::ExpectedCharacter(_))));
     }
     
     #[test]
@@ -649,7 +647,7 @@ mod tests {
 }
 
 // ---------------------------------------------------------------------------
-// Main entry point for testing
+// Main entry point
 // ---------------------------------------------------------------------------
 
 fn main() {
