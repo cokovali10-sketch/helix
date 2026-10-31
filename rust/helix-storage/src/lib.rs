@@ -9,6 +9,11 @@ use std::io::{self, Write, Read};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
+pub mod compression;
+pub mod retention;
+pub mod compaction;
+pub mod sstable_reader;
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
