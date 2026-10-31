@@ -8,7 +8,11 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 pub mod functions;
+pub mod optimizer;
+pub mod lexer;
 pub use functions::*;
+pub use optimizer::*;
+pub use lexer::*;
 
 // ---------------------------------------------------------------------------
 // Query Language Types
