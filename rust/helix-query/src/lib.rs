@@ -10,9 +10,11 @@ use std::fmt;
 pub mod functions;
 pub mod optimizer;
 pub mod lexer;
+pub mod parser;
 pub use functions::*;
 pub use optimizer::*;
 pub use lexer::*;
+pub use parser::*;
 
 // ---------------------------------------------------------------------------
 // Query Language Types
