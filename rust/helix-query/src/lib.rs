@@ -11,10 +11,12 @@ pub mod functions;
 pub mod optimizer;
 pub mod lexer;
 pub mod parser;
+pub mod executor;
 pub use functions::*;
 pub use optimizer::*;
 pub use lexer::*;
 pub use parser::*;
+pub use executor::*;
 
 // ---------------------------------------------------------------------------
 // Query Language Types
