@@ -22,6 +22,7 @@ pub mod cache;
 pub mod sstable_reader_extended;
 pub mod wal_advanced;
 pub mod compaction_extended;
+pub mod block_manager;
 
 // ---------------------------------------------------------------------------
 // Configuration
