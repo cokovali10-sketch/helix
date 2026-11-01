@@ -17,6 +17,7 @@ pub mod metrics;
 pub mod index;
 pub mod wal_extended;
 pub mod memtable_extended;
+pub mod sstable_writer;
 
 // ---------------------------------------------------------------------------
 // Configuration
