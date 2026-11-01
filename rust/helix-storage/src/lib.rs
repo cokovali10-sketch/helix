@@ -16,6 +16,7 @@ pub mod sstable_reader;
 pub mod metrics;
 pub mod index;
 pub mod wal_extended;
+pub mod memtable_extended;
 
 // ---------------------------------------------------------------------------
 // Configuration
