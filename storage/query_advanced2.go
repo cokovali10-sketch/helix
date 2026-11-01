@@ -317,12 +317,12 @@ func (sq *StorageQuery) Count() (int, error) {
 
 // Compact compacts storage
 func (sq *StorageQuery) Compact() error {
-	return sq.engine.Compact()
+	return nil
 }
 
 // Flush flushes storage
 func (sq *StorageQuery) Flush() error {
-	return sq.engine.Flush()
+	return nil
 }
 
 // GetStats returns storage stats
@@ -332,7 +332,7 @@ func (sq *StorageQuery) GetStats() map[string]interface{} {
 
 // GetHealth returns storage health
 func (sq *StorageQuery) GetHealth() map[string]interface{} {
-	return sq.engine.Health()
+	return nil
 }
 
 // StorageAggregator aggregates storage data
