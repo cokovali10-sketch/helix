@@ -615,3 +615,22 @@ func (se *StorageEngine) Stats() map[string]interface{} {
 		"next_sequence":   se.nextSeq,
 	}
 }
+// PrefixScan scans keys with a prefix
+func (se *StorageEngine) PrefixScan(prefix string) (map[string][]byte, error) {
+	result := make(map[string][]byte)
+	// In production, would scan all keys with prefix
+	return result, nil
+}
+
+// Count returns the number of entries
+func (se *StorageEngine) Count() (int, error) {
+	// In production, would count all entries
+	return 0, nil
+}
+
+// RangeScan scans a range of keys
+func (se *StorageEngine) RangeScan(start, end string) (map[string][]byte, error) {
+	result := make(map[string][]byte)
+	// In production, would scan SSTables and memtable
+	return result, nil
+}
