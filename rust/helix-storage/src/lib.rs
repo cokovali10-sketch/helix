@@ -25,6 +25,7 @@ pub mod compaction_extended;
 pub mod block_manager;
 pub mod sstable_extended;
 pub mod engine_extended;
+pub mod sstable_encoding;
 
 // ---------------------------------------------------------------------------
 // Configuration
