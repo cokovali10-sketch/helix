@@ -27,6 +27,7 @@ pub mod sstable_extended;
 pub mod engine_extended;
 pub mod sstable_encoding;
 pub mod bloom_filter;
+pub mod sstable_advanced;
 
 // ---------------------------------------------------------------------------
 // Configuration
