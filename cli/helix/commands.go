@@ -168,7 +168,7 @@ func (c *CLI) registerCommands() {
 func (c *CLI) Run() error {
 	args := os.Args[1:]
 	if len(args) == 0 {
-		return c.runHelp(nil)
+		return c.runHelp(context.Background(), nil)
 	}
 	
 	// Load config
@@ -428,7 +428,7 @@ func (c *CLI) runAlerts(ctx context.Context, args []string) error {
 	fmt.Printf("Alerts: %d\n", len(alerts))
 	fmt.Println("---")
 	for _, alert := range alerts {
-		fmt.Printf("[%s] %s - %s\n", alert["severity"], alert["name"], alert["status"])
+		fmt.Printf("[%s] %s - %s\n", alert.Severity, alert.Name, alert.Status)
 	}
 	
 	return nil
@@ -439,7 +439,7 @@ func (c *CLI) runDashboards(ctx context.Context, args []string) error {
 		return fmt.Errorf("not configured. Run 'helix config --endpoint <url> --api-key <key>'")
 	}
 	
-	dashboards, err := c.client.GetDashboards(ctx)
+	dashboards, err := c.client.ListDashboards(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get dashboards: %w", err)
 	}
@@ -447,7 +447,7 @@ func (c *CLI) runDashboards(ctx context.Context, args []string) error {
 	fmt.Printf("Dashboards: %d\n", len(dashboards))
 	fmt.Println("---")
 	for _, d := range dashboards {
-		fmt.Printf("%s - %s\n", d["title"], d["description"])
+		fmt.Printf("%s - %s\n", d.Title, d.Description)
 	}
 	
 	return nil

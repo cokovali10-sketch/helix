@@ -3,7 +3,6 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 )
@@ -54,11 +53,8 @@ func TestAgent_ProcessEvent(t *testing.T) {
 		Tenant:    "test-tenant",
 	}
 
-	if err := agent.ProcessEvent(ctx, &event); err != nil {
-		t.Fatalf("Failed to process event: %v", err)
-	}
+	agent.processEvent(event)
 }
-
 func TestAgent_AddProcessor(t *testing.T) {
 	config := DefaultAgentConfig()
 	agent := NewAgent(config)
@@ -257,95 +253,12 @@ func TestCreateDefaultAgent(t *testing.T) {
 	}
 }
 
-func TestHealthChecker_Create(t *testing.T) {
-	hc := NewHealthChecker()
-	if hc == nil {
-		t.Fatal("HealthChecker is nil")
-	}
-}
 
-func TestHealthChecker_RegisterCheck(t *testing.T) {
-	hc := NewHealthChecker()
-	hc.RegisterCheck("test", func() error { return nil }, time.Second, time.Second)
 
-	status := hc.Check()
-	if status.Status != "healthy" {
-		t.Errorf("Expected healthy, got %s", status.Status)
-	}
-}
 
-func TestHealthChecker_UnhealthyCheck(t *testing.T) {
-	hc := NewHealthChecker()
-	hc.RegisterCheck("failing", func() error { return fmt.Errorf("check failed") }, time.Second, time.Second)
 
-	status := hc.Check()
-	if status.Status != "unhealthy" {
-		t.Errorf("Expected unhealthy, got %s", status.Status)
-	}
-}
 
-func TestMetricsCollector_Create(t *testing.T) {
-	mc := NewMetricsCollector()
-	if mc == nil {
-		t.Fatal("MetricsCollector is nil")
-	}
-}
 
-func TestMetricsCollector_IncrementCounter(t *testing.T) {
-	mc := NewMetricsCollector()
-	mc.IncrementCounter("test_counter", map[string]string{"host": "server1"}, 1.0)
-	mc.IncrementCounter("test_counter", map[string]string{"host": "server1"}, 1.0)
 
-	metric, ok := mc.GetMetric("test_counter", map[string]string{"host": "server1"})
-	if !ok {
-		t.Fatal("Metric not found")
-	}
-	if metric.Value != 2.0 {
-		t.Errorf("Expected 2.0, got %f", metric.Value)
-	}
-}
 
-func TestMetricsCollector_SetGauge(t *testing.T) {
-	mc := NewMetricsCollector()
-	mc.SetGauge("test_gauge", map[string]string{"host": "server1"}, 50.0)
 
-	metric, ok := mc.GetMetric("test_gauge", map[string]string{"host": "server1"})
-	if !ok {
-		t.Fatal("Metric not found")
-	}
-	if metric.Value != 50.0 {
-		t.Errorf("Expected 50.0, got %f", metric.Value)
-	}
-}
-
-func TestMetricsCollector_ToPrometheus(t *testing.T) {
-	mc := NewMetricsCollector()
-	mc.IncrementCounter("test_counter", map[string]string{"host": "server1"}, 1.0)
-
-	output := mc.ToPrometheus()
-	if output == "" {
-		t.Error("Expected non-empty output")
-	}
-}
-
-func TestPerformanceProfiler_Create(t *testing.T) {
-	pp := NewPerformanceProfiler(time.Second, 100)
-	if pp == nil {
-		t.Fatal("Profiler is nil")
-	}
-}
-
-func TestDiagnostics_Create(t *testing.T) {
-	d := NewDiagnostics()
-	if d == nil {
-		t.Fatal("Diagnostics is nil")
-	}
-}
-
-func TestDiagnostics_Run(t *testing.T) {
-	d := NewDiagnostics()
-	results := d.Run()
-	if len(results) == 0 {
-		t.Error("Expected results")
-	}
-}

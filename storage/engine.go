@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
-	"time"
 )
 
 // WAL represents Write-Ahead Log
@@ -321,8 +320,8 @@ func (w *SSTableWriter) Close() error {
 
 	// Write footer
 	footer := SSTableFooter{
-		IndexOffset:  indexOffset,
-		IndexSize:    w.offset - indexOffset,
+		IndexOffset:  uint64(indexOffset),
+		IndexSize:    uint64(w.offset - indexOffset),
 		NumEntries:   uint64(len(w.index)),
 	}
 	
@@ -388,7 +387,7 @@ func (r *SSTableReader) Get(key string) ([]byte, bool) {
 	}
 
 	// Read from file
-	r.file.Seek(offset, io.SeekStart)
+	r.file.Seek(int64(offset), io.SeekStart)
 	
 	// Read key length
 	var keyLen uint32

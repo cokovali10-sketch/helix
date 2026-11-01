@@ -3,7 +3,7 @@ package catalogapi
 
 import (
 	"encoding/json"
-	"fmt"
+
 	"net/http"
 	"strconv"
 	"strings"

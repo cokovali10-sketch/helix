@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
-
 // AuthMiddleware handles authentication
 type AuthMiddleware struct {
 	secretKey  string

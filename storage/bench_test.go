@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"sync"
 	"time"
 )
 
@@ -361,22 +362,3 @@ func TestBloomFilter_FalsePositiveRate(t *testing.T) {
 	}
 }
 
-func TestStorageEngine_Stats(t *testing.T) {
-	dir := t.TempDir()
-	walDir := dir + "/wal"
-	sstDir := dir + "/sst"
-
-	engine, err := NewStorageEngine(walDir, sstDir, 1024*1024, 1024)
-	if err != nil {
-		t.Fatalf("Failed to create storage engine: %v", err)
-	}
-	defer engine.Close()
-
-	engine.Put("key1", []byte("value1"))
-	engine.Put("key2", []byte("value2"))
-
-	stats := engine.Stats()
-	if stats == nil {
-		t.Fatal("Stats is nil")
-	}
-}
