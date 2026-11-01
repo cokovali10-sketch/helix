@@ -1,50 +1,35 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react'
-import { FilterBar } from '../Common/FilterBar'
-import { DataTable } from '../Common/DataTable'
-import { MetricCard } from '../Common/MetricCard'
-import { ChartPanel } from '../Common/ChartPanel'
-import { TimeRangePicker } from '../Common/TimeRangePicker'
-
-interface Metric {
-  name: string
-  type: 'counter' | 'gauge' | 'histogram' | 'summary'
-  unit: string
-  help: string
-  labels: string[]
-  cardinality: number
-  lastSeen: number
-  sampleCount: number
-}
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 
 interface MetricExplorerProps {
-  onMetricSelect?: (metric: Metric) => void
+  metrics: Array<{
+    name: string
+    type: 'counter' | 'gauge' | 'histogram' | 'summary'
+    unit: string
+    help: string
+    labels: string[]
+    cardinality: number
+    lastSeen: number
+    sampleCount: number
+  }>
+  onMetricSelect?: (metric: any) => void
   onQueryCreate?: (query: string) => void
+  loading?: boolean
 }
 
-const MOCK_METRICS: Metric[] = [
-  { name: 'cpu_usage', type: 'gauge', unit: 'percent', help: 'CPU usage percentage', labels: ['host', 'instance', 'job'], cardinality: 150, lastSeen: Date.now(), sampleCount: 1000000 },
-  { name: 'memory_usage', type: 'gauge', unit: 'bytes', help: 'Memory usage in bytes', labels: ['host', 'instance', 'job'], cardinality: 150, lastSeen: Date.now(), sampleCount: 1000000 },
-  { name: 'disk_usage', type: 'gauge', unit: 'bytes', help: 'Disk usage in bytes', labels: ['host', 'instance', 'mount'], cardinality: 300, lastSeen: Date.now(), sampleCount: 500000 },
-  { name: 'network_rx_bytes', type: 'counter', unit: 'bytes', help: 'Network received bytes', labels: ['host', 'interface'], cardinality: 50, lastSeen: Date.now(), sampleCount: 2000000 },
-  { name: 'network_tx_bytes', type: 'counter', unit: 'bytes', help: 'Network transmitted bytes', labels: ['host', 'interface'], cardinality: 50, lastSeen: Date.now(), sampleCount: 2000000 },
-  { name: 'http_requests_total', type: 'counter', unit: 'requests', help: 'Total HTTP requests', labels: ['method', 'status', 'path'], cardinality: 500, lastSeen: Date.now(), sampleCount: 5000000 },
-  { name: 'http_request_duration_seconds', type: 'histogram', unit: 'seconds', help: 'HTTP request duration', labels: ['method', 'status', 'path'], cardinality: 500, lastSeen: Date.now(), sampleCount: 5000000 },
-  { name: 'up', type: 'gauge', unit: 'boolean', help: 'Target up status', labels: ['instance', 'job'], cardinality: 100, lastSeen: Date.now(), sampleCount: 100000 },
-  { name: 'process_cpu_seconds_total', type: 'counter', unit: 'seconds', help: 'Total process CPU time', labels: ['instance', 'job'], cardinality: 100, lastSeen: Date.now(), sampleCount: 100000 },
-  { name: 'process_resident_memory_bytes', type: 'gauge', unit: 'bytes', help: 'Resident memory size', labels: ['instance', 'job'], cardinality: 100, lastSeen: Date.now(), sampleCount: 100000 },
-  { name: 'go_goroutines', type: 'gauge', unit: 'goroutines', help: 'Number of goroutines', labels: ['instance', 'job'], cardinality: 100, lastSeen: Date.now(), sampleCount: 100000 },
-  { name: 'go_memstats_alloc_bytes', type: 'gauge', unit: 'bytes', help: 'Bytes allocated', labels: ['instance', 'job'], cardinality: 100, lastSeen: Date.now(), sampleCount: 100000 },
-]
+const TYPE_COLORS: Record<string, string> = {
+  counter: 'badge--info',
+  gauge: 'badge--success',
+  histogram: 'badge--warning',
+  summary: 'badge--neutral',
+}
 
-export function MetricExplorer({ onMetricSelect, onQueryCreate }: MetricExplorerProps) {
-  const [metrics, setMetrics] = useState<Metric[]>(MOCK_METRICS)
-  const [selectedMetric, setSelectedMetric] = useState<Metric | null>(null)
-  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'detail'>('grid')
+export function MetricExplorer({ metrics, onMetricSelect, onQueryCreate, loading = false }: MetricExplorerProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<string[]>([])
   const [sortBy, setSortBy] = useState<'name' | 'cardinality' | 'sampleCount' | 'lastSeen'>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const [timeRange, setTimeRange] = useState<[Date, Date]>([new Date(Date.now() - 3600000), new Date()])
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [selectedMetric, setSelectedMetric] = useState<any>(null)
   const [showFilters, setShowFilters] = useState(false)
 
   const filteredMetrics = useMemo(() => {
@@ -85,30 +70,21 @@ export function MetricExplorer({ onMetricSelect, onQueryCreate }: MetricExplorer
     return result
   }, [metrics, searchQuery, typeFilter, sortBy, sortDir])
 
-  const handleMetricClick = useCallback((metric: Metric) => {
+  const handleMetricClick = useCallback((metric: any) => {
     setSelectedMetric(metric)
-    setViewMode('detail')
     onMetricSelect?.(metric)
   }, [onMetricSelect])
 
-  const handleCreateQuery = useCallback((metric: Metric) => {
+  const handleCreateQuery = useCallback((metric: any) => {
     const query = `${metric.name}{job="node"}`
     onQueryCreate?.(query)
   }, [onQueryCreate])
 
   const handleBack = useCallback(() => {
     setSelectedMetric(null)
-    setViewMode('grid')
   }, [])
 
-  const typeColors: Record<string, string> = {
-    counter: 'badge--info',
-    gauge: 'badge--success',
-    histogram: 'badge--warning',
-    summary: 'badge--neutral',
-  }
-
-  if (viewMode === 'detail' && selectedMetric) {
+  if (selectedMetric) {
     return (
       <div className="h-full flex flex-col bg-primary">
         <div className="flex items-center gap-3 p-4 border-b border-border bg-secondary">
@@ -126,10 +102,22 @@ export function MetricExplorer({ onMetricSelect, onQueryCreate }: MetricExplorer
 
         <div className="flex-1 overflow-auto p-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-            <MetricCard title="Type" value={selectedMetric.type} color="info" />
-            <MetricCard title="Unit" value={selectedMetric.unit} color="primary" />
-            <MetricCard title="Cardinality" value={selectedMetric.cardinality} color="warning" />
-            <MetricCard title="Sample Count" value={selectedMetric.sampleCount} color="success" />
+            <div className="card p-4">
+              <p className="text-xs font-medium text-muted uppercase tracking-wide">Type</p>
+              <p className="text-2xl font-bold text-primary mt-1">{selectedMetric.type}</p>
+            </div>
+            <div className="card p-4">
+              <p className="text-xs font-medium text-muted uppercase tracking-wide">Unit</p>
+              <p className="text-2xl font-bold text-primary mt-1">{selectedMetric.unit}</p>
+            </div>
+            <div className="card p-4">
+              <p className="text-xs font-medium text-muted uppercase tracking-wide">Cardinality</p>
+              <p className="text-2xl font-bold text-primary mt-1">{selectedMetric.cardinality}</p>
+            </div>
+            <div className="card p-4">
+              <p className="text-xs font-medium text-muted uppercase tracking-wide">Samples</p>
+              <p className="text-2xl font-bold text-primary mt-1">{selectedMetric.sampleCount.toLocaleString()}</p>
+            </div>
           </div>
 
           <div className="card mb-6">
@@ -138,7 +126,7 @@ export function MetricExplorer({ onMetricSelect, onQueryCreate }: MetricExplorer
             </div>
             <div className="card__body">
               <div className="flex flex-wrap gap-2">
-                {selectedMetric.labels.map(label => (
+                {selectedMetric.labels.map((label: string) => (
                   <span key={label} className="badge badge--neutral">{label}</span>
                 ))}
               </div>
@@ -146,7 +134,7 @@ export function MetricExplorer({ onMetricSelect, onQueryCreate }: MetricExplorer
           </div>
 
           <div className="card mb-6">
-            <div className="card__header flex items-center justify-between">
+            <div className="card__header">
               <h3 className="font-semibold">Query Examples</h3>
             </div>
             <div className="card__body space-y-2">
@@ -155,6 +143,7 @@ export function MetricExplorer({ onMetricSelect, onQueryCreate }: MetricExplorer
                 `rate(${selectedMetric.name}[5m])`,
                 `sum by (host) (rate(${selectedMetric.name}[5m]))`,
                 `topk(10, rate(${selectedMetric.name}[5m]))`,
+                `histogram_quantile(0.95, rate(${selectedMetric.name}_bucket[5m]))`,
               ].map((q, i) => (
                 <div key={i} className="flex items-center justify-between p-2 bg-code rounded">
                   <code className="text-sm font-mono text-primary">{q}</code>
@@ -168,22 +157,15 @@ export function MetricExplorer({ onMetricSelect, onQueryCreate }: MetricExplorer
               ))}
             </div>
           </div>
-
-          <ChartPanel
-            title={`${selectedMetric.name} over time`}
-            type="line"
-            data={{
-              labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
-              datasets: [{
-                label: selectedMetric.name,
-                data: Array.from({ length: 24 }, () => Math.random() * 100),
-              }],
-            }}
-            height={300}
-            timeRange={timeRange}
-            onTimeRangeChange={setTimeRange}
-          />
         </div>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="loading-spinner loading-spinner--lg" />
       </div>
     )
   }
@@ -208,6 +190,17 @@ export function MetricExplorer({ onMetricSelect, onQueryCreate }: MetricExplorer
               onChange={(e) => setSearchQuery(e.target.value)}
               className="input pl-9 w-64"
             />
+          </div>
+          <div className="flex items-center gap-1 bg-tertiary rounded-lg p-1">
+            {(['counter', 'gauge', 'histogram', 'summary'] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => setTypeFilter(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
+                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${typeFilter.includes(t) ? 'bg-primary text-white' : 'text-muted hover:text-primary'}`}
+              >
+                {t}
+              </button>
+            ))}
           </div>
           <div className="flex items-center gap-1 bg-tertiary rounded-lg p-1">
             <button
@@ -237,64 +230,8 @@ export function MetricExplorer({ onMetricSelect, onQueryCreate }: MetricExplorer
               </svg>
             </button>
           </div>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`btn btn--sm ${showFilters ? 'btn--primary' : 'btn--ghost'}`}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
-              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-            </svg>
-            Filters
-          </button>
         </div>
       </div>
-
-      {showFilters && (
-        <div className="bg-secondary border-b border-border p-4 animate-slide-in">
-          <div className="flex flex-wrap gap-4">
-            <div>
-              <label className="label">Type</label>
-              <div className="flex gap-2">
-                {['counter', 'gauge', 'histogram', 'summary'].map(t => (
-                  <label key={t} className={`badge ${typeFilter.includes(t) ? 'badge--info' : 'badge--neutral'} cursor-pointer`}>
-                    <input
-                      type="checkbox"
-                      className="sr-only"
-                      checked={typeFilter.includes(t)}
-                      onChange={() => setTypeFilter(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
-                    />
-                    {t}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="label">Sort By</label>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as any)}
-                className="input input--sm"
-              >
-                <option value="name">Name</option>
-                <option value="cardinality">Cardinality</option>
-                <option value="sampleCount">Sample Count</option>
-                <option value="lastSeen">Last Seen</option>
-              </select>
-            </div>
-            <div>
-              <label className="label">Direction</label>
-              <select
-                value={sortDir}
-                onChange={(e) => setSortDir(e.target.value as any)}
-                className="input input--sm"
-              >
-                <option value="asc">Ascending</option>
-                <option value="desc">Descending</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="flex-1 overflow-auto p-4">
         {viewMode === 'grid' ? (
@@ -307,7 +244,7 @@ export function MetricExplorer({ onMetricSelect, onQueryCreate }: MetricExplorer
               >
                 <div className="flex items-start justify-between mb-2">
                   <h3 className="font-semibold text-sm truncate flex-1">{metric.name}</h3>
-                  <span className={`badge ${typeColors[metric.type]}`}>{metric.type}</span>
+                  <span className={`badge ${TYPE_COLORS[metric.type]}`}>{metric.type}</span>
                 </div>
                 <p className="text-xs text-muted mb-3 line-clamp-2">{metric.help}</p>
                 <div className="flex items-center justify-between text-xs text-muted">
@@ -315,7 +252,7 @@ export function MetricExplorer({ onMetricSelect, onQueryCreate }: MetricExplorer
                   <span>{metric.sampleCount.toLocaleString()} samples</span>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1">
-                  {metric.labels.slice(0, 3).map(label => (
+                  {metric.labels.slice(0, 3).map((label: string) => (
                     <span key={label} className="badge badge--neutral text-xs">{label}</span>
                   ))}
                   {metric.labels.length > 3 && (
@@ -334,29 +271,45 @@ export function MetricExplorer({ onMetricSelect, onQueryCreate }: MetricExplorer
             ))}
           </div>
         ) : (
-          <DataTable
-            data={filteredMetrics}
-            columns={[
-              { key: 'name', header: 'Metric Name', accessor: (m: Metric) => m.name, sortable: true },
-              { key: 'type', header: 'Type', accessor: (m: Metric) => m.type, sortable: true, render: (v: string) => <span className={`badge ${typeColors[v]}`}>{v}</span> },
-              { key: 'unit', header: 'Unit', accessor: (m: Metric) => m.unit },
-              { key: 'cardinality', header: 'Cardinality', accessor: (m: Metric) => m.cardinality, sortable: true, align: 'right' },
-              { key: 'sampleCount', header: 'Samples', accessor: (m: Metric) => m.sampleCount, sortable: true, align: 'right', render: (v: number) => v.toLocaleString() },
-              { key: 'labels', header: 'Labels', accessor: (m: Metric) => m.labels.join(', '), render: (v: string, m: Metric) => (
-                <div className="flex flex-wrap gap-1">
-                  {m.labels.slice(0, 3).map(l => <span key={l} className="badge badge--neutral text-xs">{l}</span>)}
-                </div>
-              )},
-              { key: 'actions', header: 'Actions', accessor: (m: Metric) => m, render: (_: any, m: Metric) => (
-                <div className="flex gap-1">
-                  <button className="btn btn--ghost btn--sm" onClick={() => handleMetricClick(m)}>View</button>
-                  <button className="btn btn--ghost btn--sm" onClick={() => handleCreateQuery(m)}>Query</button>
-                </div>
-              )},
-            ]}
-            pageSize={20}
-            emptyMessage="No metrics found"
-          />
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Metric Name</th>
+                  <th>Type</th>
+                  <th>Unit</th>
+                  <th>Cardinality</th>
+                  <th>Samples</th>
+                  <th>Labels</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredMetrics.map(metric => (
+                  <tr key={metric.name}>
+                    <td className="font-mono text-sm">{metric.name}</td>
+                    <td><span className={`badge ${TYPE_COLORS[metric.type]}`}>{metric.type}</span></td>
+                    <td className="text-sm text-muted">{metric.unit}</td>
+                    <td className="text-right">{metric.cardinality}</td>
+                    <td className="text-right">{metric.sampleCount.toLocaleString()}</td>
+                    <td>
+                      <div className="flex flex-wrap gap-1">
+                        {metric.labels.slice(0, 3).map((l: string) => (
+                          <span key={l} className="badge badge--neutral text-xs">{l}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="flex gap-1">
+                        <button className="btn btn--ghost btn--sm" onClick={() => handleMetricClick(metric)}>View</button>
+                        <button className="btn btn--ghost btn--sm" onClick={() => handleCreateQuery(metric)}>Query</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
 
         {filteredMetrics.length === 0 && (
