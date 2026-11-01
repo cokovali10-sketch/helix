@@ -15,6 +15,7 @@ pub mod executor;
 pub mod planner;
 pub mod executor_advanced;
 pub mod cache;
+pub mod executor_advanced2;
 pub use functions::*;
 pub use optimizer::*;
 pub use lexer::*;
@@ -23,6 +24,7 @@ pub use executor::*;
 pub use planner::*;
 pub use executor_advanced::*;
 pub use cache::*;
+pub use executor_advanced2::*;
 
 // ---------------------------------------------------------------------------
 // Query Language Types
