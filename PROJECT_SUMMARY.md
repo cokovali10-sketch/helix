@@ -6,7 +6,7 @@
 Helix is a SOC (Security Operations Center) observability platform that continues ApexGuard's event generation with full storage, analytics, and querying capabilities. Built as a custom TSDB replacing ClickHouse/Prometheus.
 
 ### Total Project Size
-- **~106,000 lines** of code across all components
+- **~43,600 lines** of code across all components
 - 11 major component directories
 - 3 primary languages: Go, Rust, TypeScript
 

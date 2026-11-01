@@ -3,7 +3,7 @@
 ## Repository Initialized: D:\PortfolioProjects\helix
 
 ### Overview
-Helix is a complete SOC (Security Operations Center) observability platform with ~108K lines of code across all components. The platform provides custom TSDB storage (WAL + Memtable + SSTable in Rust), event ingestion with tenancy/rate-limiting, full query engine, SDKs, APIs, Web UI, and Kubernetes deployment.
+Helix is a complete SOC (Security Operations Center) observability platform with ~43.6K lines of code across all components. The platform provides custom TSDB storage (WAL + Memtable + SSTable in Rust), event ingestion with tenancy/rate-limiting, full query engine, SDKs, APIs, Web UI, and Kubernetes deployment.
 
 ### Repository Structure
 
