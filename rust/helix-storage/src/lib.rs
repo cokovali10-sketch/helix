@@ -20,6 +20,7 @@ pub mod memtable_extended;
 pub mod sstable_writer;
 pub mod cache;
 pub mod sstable_reader_extended;
+pub mod wal_advanced;
 
 // ---------------------------------------------------------------------------
 // Configuration
