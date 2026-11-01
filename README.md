@@ -1,4 +1,8 @@
 <div align="center">
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0f172a,50:06b6d4,100:38bdf8&height=160&section=header&text=Helix&fontSize=64&fontColor=ffffff&fontAlignY=40&desc=Observatory+Platform&descSize=16&descAlignY=62&animation=fadeIn" alt="header" />
+</div>
+
+<div align="center">
 
 # 🌀 Helix Observatory Platform
 
