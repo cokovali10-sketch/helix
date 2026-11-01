@@ -28,6 +28,7 @@ pub mod engine_extended;
 pub mod sstable_encoding;
 pub mod bloom_filter;
 pub mod sstable_advanced;
+pub mod timeseries;
 pub mod query_engine;
 
 // ---------------------------------------------------------------------------
