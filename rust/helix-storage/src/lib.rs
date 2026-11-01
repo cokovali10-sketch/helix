@@ -18,6 +18,7 @@ pub mod index;
 pub mod wal_extended;
 pub mod memtable_extended;
 pub mod sstable_writer;
+pub mod cache;
 
 // ---------------------------------------------------------------------------
 // Configuration
