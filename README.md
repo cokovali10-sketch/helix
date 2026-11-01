@@ -13,7 +13,7 @@
 [![Go](https://img.shields.io/badge/Go-1.21-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![Rust](https://img.shields.io/badge/Rust-stable-dea584?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Lines](https://img.shields.io/badge/lines-~34k-a78bfa)](#components)
+[![Lines](https://img.shields.io/badge/lines-~106k-a78bfa)](#components)
 [![Status](https://img.shields.io/badge/status-early%20alpha-f59e0b)](#honest-assessment)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -61,7 +61,7 @@ flowchart LR
 | ☸️ Helm Charts | YAML | ~16 700 | Kubernetes deployment |
 | 📊 Benchmarks | Rust | — | Criterion perf suites |
 
-**Total: ~34 000 lines** across Go, Rust and TypeScript.
+**Total: ~106 000 lines** across Go, Rust and TypeScript.
 
 ## Project Structure
 
