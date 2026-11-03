@@ -29,8 +29,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
 {{- define "helix.fullname" -}}
-{{- if .Values.fullnameOverride }}-{{ .Values.fullnameOverride }}{{- end }}
-{{- else }}-{{ .Release.Name }}-{{ .Chart.Name }}{{- end -}}
+{{- if .Values.fullnameOverride }}-{{ .Values.fullnameOverride }}{{- else }}-{{ .Release.Name }}-{{ .Chart.Name }}{{- end -}}
 {{- end -}}
 
 {{- /* ConfigMap for API configuration */ -}}
