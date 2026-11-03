@@ -44,9 +44,9 @@ data:
   APP_ENV: "{{ $cfg.env | default "production" }}"
   APP_DEBUG: "{{ $cfg.debug | default "false" }}"
   APP_LOG_LEVEL: "{{ $cfg.logLevel | default "info" }}"
-  DATABASE_URL: "postgresql://{{ .Values.postgresql.auth.postgresqlUsername }}:{{ .Values.postgresql.auth.postgresqlPassword }}@{{ include "postgresql.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:5432/helix"
-  REDIS_URL: "redis://{{ include "redis.fullname" . }}:6379"
-  NATS_URL: "nats://{{ include "natss.fullname" . }}:4222"
+  DATABASE_URL: "postgresql://helix:helix-password@postgres:5432/helix"
+  REDIS_URL: "redis://redis:6379"
+  NATS_URL: "nats://nats:4222"
   GIN_MODE: "{{ $cfg.ginMode | default "release" }}"
 
 {{- /* API Deployment */ -}}
