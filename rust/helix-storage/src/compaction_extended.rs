@@ -1,14 +1,12 @@
 //! Helix Storage Engine - Compaction Module (Extended)
-//! 
+//!
 //! This module provides extended compaction features including
 //! automatic compaction, compaction statistics, and scheduling.
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Compaction priority
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -98,7 +96,7 @@ impl CompactionConfig {
             max_files_to_compact: 32,
         }
     }
-    
+
     pub fn size_tiered() -> Self {
         CompactionConfig {
             strategy: CompactionStrategyType::SizeTiered,
@@ -110,8 +108,8 @@ impl CompactionConfig {
             max_files_to_compact: 32,
         }
     }
-    
-    pub fn time_window(window_hours: u64) -> Self {
+
+    pub fn time_window(_window_hours: u64) -> Self {
         CompactionConfig {
             strategy: CompactionStrategyType::TimeWindow,
             max_concurrent: 2,
@@ -133,7 +131,7 @@ impl CompactionScheduler {
     pub fn new(config: CompactionConfig) -> Self {
         CompactionScheduler { config }
     }
-    
+
     pub fn schedule(&self, files: &[SSTableInfo]) -> Vec<CompactionJob> {
         match self.config.strategy {
             CompactionStrategyType::Leveled => self.schedule_leveled(files),
@@ -142,34 +140,55 @@ impl CompactionScheduler {
             CompactionStrategyType::Universal => self.schedule_universal(files),
         }
     }
-    
+
     fn schedule_leveled(&self, files: &[SSTableInfo]) -> Vec<CompactionJob> {
         let mut jobs = Vec::new();
-        
+
         // Group by level
         let mut levels: BTreeMap<usize, Vec<&SSTableInfo>> = BTreeMap::new();
         for file in files {
             levels.entry(file.level).or_default().push(file);
         }
-        
+
         // Check each level
         for (level, level_files) in &levels {
             if level_files.len() < self.config.min_files_to_compact {
                 continue;
             }
-            
+
             let total_size: u64 = level_files.iter().map(|f| f.size).sum();
-            let target_size = (self.config.target_file_size as f64 * 10.0_f64.powi(*level as i32)) as u64;
-            
+            let target_size =
+                (self.config.target_file_size as f64 * 10.0_f64.powi(*level as i32)) as u64;
+
             if total_size > target_size {
                 let job = CompactionJob {
-                    id: format!("compact-{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()),
+                    id: format!(
+                        "compact-{}",
+                        SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_nanos()
+                    ),
                     input_files: level_files.iter().map(|f| f.path.clone()).collect(),
-                    output_file: PathBuf::from(format!("level-{}-{}.sst", level + 1, SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos())),
+                    output_file: PathBuf::from(format!(
+                        "level-{}-{}.sst",
+                        level + 1,
+                        SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_nanos()
+                    )),
                     level: *level + 1,
-                    priority: if total_size > target_size * 2 { CompactionPriority::High } else { CompactionPriority::Medium },
+                    priority: if total_size > target_size * 2 {
+                        CompactionPriority::High
+                    } else {
+                        CompactionPriority::Medium
+                    },
                     estimated_size: total_size,
-                    created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
+                    created_at: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs() as i64,
                     started_at: None,
                     completed_at: None,
                     status: CompactionJobStatus::Pending,
@@ -177,30 +196,46 @@ impl CompactionScheduler {
                 jobs.push(job);
             }
         }
-        
+
         jobs
     }
-    
+
     fn schedule_size_tiered(&self, files: &[SSTableInfo]) -> Vec<CompactionJob> {
         let mut jobs = Vec::new();
-        
+
         // Group by size bucket
         let mut buckets: BTreeMap<usize, Vec<&SSTableInfo>> = BTreeMap::new();
         for file in files {
             let bucket = (file.size as f64).log2().floor() as usize;
             buckets.entry(bucket).or_default().push(file);
         }
-        
+
         for (bucket, bucket_files) in &buckets {
             if bucket_files.len() >= self.config.min_files_to_compact {
                 let job = CompactionJob {
-                    id: format!("compact-{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()),
+                    id: format!(
+                        "compact-{}",
+                        SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_nanos()
+                    ),
                     input_files: bucket_files.iter().map(|f| f.path.clone()).collect(),
-                    output_file: PathBuf::from(format!("tier-{}-{}.sst", bucket + 1, SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos())),
+                    output_file: PathBuf::from(format!(
+                        "tier-{}-{}.sst",
+                        bucket + 1,
+                        SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_nanos()
+                    )),
                     level: *bucket + 1,
                     priority: CompactionPriority::Medium,
                     estimated_size: bucket_files.iter().map(|f| f.size).sum(),
-                    created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
+                    created_at: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs() as i64,
                     started_at: None,
                     completed_at: None,
                     status: CompactionJobStatus::Pending,
@@ -208,13 +243,13 @@ impl CompactionScheduler {
                 jobs.push(job);
             }
         }
-        
+
         jobs
     }
-    
+
     fn schedule_time_window(&self, files: &[SSTableInfo]) -> Vec<CompactionJob> {
         let mut jobs = Vec::new();
-        
+
         // Group by time window (1 hour)
         let window_size: i64 = 3600;
         let mut windows: BTreeMap<i64, Vec<&SSTableInfo>> = BTreeMap::new();
@@ -222,17 +257,33 @@ impl CompactionScheduler {
             let window = file.min_timestamp / window_size;
             windows.entry(window).or_default().push(file);
         }
-        
+
         for (window, window_files) in &windows {
             if window_files.len() > 1 {
                 let job = CompactionJob {
-                    id: format!("compact-{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()),
+                    id: format!(
+                        "compact-{}",
+                        SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_nanos()
+                    ),
                     input_files: window_files.iter().map(|f| f.path.clone()).collect(),
-                    output_file: PathBuf::from(format!("window-{}-{}.sst", window, SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos())),
+                    output_file: PathBuf::from(format!(
+                        "window-{}-{}.sst",
+                        window,
+                        SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_nanos()
+                    )),
                     level: 0,
                     priority: CompactionPriority::Low,
                     estimated_size: window_files.iter().map(|f| f.size).sum(),
-                    created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
+                    created_at: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs() as i64,
                     started_at: None,
                     completed_at: None,
                     status: CompactionJobStatus::Pending,
@@ -240,30 +291,45 @@ impl CompactionScheduler {
                 jobs.push(job);
             }
         }
-        
+
         jobs
     }
-    
+
     fn schedule_universal(&self, files: &[SSTableInfo]) -> Vec<CompactionJob> {
         // Universal compaction: compact all files if conditions met
         let mut jobs = Vec::new();
-        
+
         if files.len() >= self.config.min_files_to_compact {
             let job = CompactionJob {
-                id: format!("compact-{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()),
+                id: format!(
+                    "compact-{}",
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos()
+                ),
                 input_files: files.iter().map(|f| f.path.clone()).collect(),
-                output_file: PathBuf::from(format!("universal-{}.sst", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos())),
+                output_file: PathBuf::from(format!(
+                    "universal-{}.sst",
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos()
+                )),
                 level: 0,
                 priority: CompactionPriority::High,
                 estimated_size: files.iter().map(|f| f.size).sum(),
-                created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
+                created_at: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i64,
                 started_at: None,
                 completed_at: None,
                 status: CompactionJobStatus::Pending,
             };
             jobs.push(job);
         }
-        
+
         jobs
     }
 }
@@ -294,26 +360,26 @@ impl ExtendedCompactionManager {
             scheduler,
         }
     }
-    
+
     pub fn start(&self) {
         let mut running = self.running.lock().unwrap();
         *running = true;
     }
-    
+
     pub fn stop(&self) {
         let mut running = self.running.lock().unwrap();
         *running = false;
     }
-    
+
     pub fn is_running(&self) -> bool {
         *self.running.lock().unwrap()
     }
-    
+
     pub fn submit_job(&self, job: CompactionJob) {
         let mut jobs = self.jobs.write().unwrap();
         jobs.push(job);
     }
-    
+
     pub fn cancel_job(&self, id: &str) -> bool {
         let mut jobs = self.jobs.write().unwrap();
         for job in jobs.iter_mut() {
@@ -324,26 +390,35 @@ impl ExtendedCompactionManager {
         }
         false
     }
-    
+
     pub fn pending_jobs(&self) -> Vec<CompactionJob> {
         let jobs = self.jobs.read().unwrap();
-        jobs.iter().filter(|j| j.status == CompactionJobStatus::Pending).cloned().collect()
+        jobs.iter()
+            .filter(|j| j.status == CompactionJobStatus::Pending)
+            .cloned()
+            .collect()
     }
-    
+
     pub fn running_jobs(&self) -> Vec<CompactionJob> {
         let jobs = self.jobs.read().unwrap();
-        jobs.iter().filter(|j| j.status == CompactionJobStatus::Running).cloned().collect()
+        jobs.iter()
+            .filter(|j| j.status == CompactionJobStatus::Running)
+            .cloned()
+            .collect()
     }
-    
+
     pub fn completed_jobs(&self) -> Vec<CompactionJob> {
         let jobs = self.jobs.read().unwrap();
-        jobs.iter().filter(|j| j.status == CompactionJobStatus::Completed).cloned().collect()
+        jobs.iter()
+            .filter(|j| j.status == CompactionJobStatus::Completed)
+            .cloned()
+            .collect()
     }
-    
+
     pub fn stats(&self) -> CompactionStats {
         self.stats.lock().unwrap().clone()
     }
-    
+
     pub fn schedule(&self, files: &[SSTableInfo]) -> Vec<CompactionJob> {
         let sstable_infos: Vec<SSTableInfo> = files.to_vec();
         self.scheduler.schedule(&sstable_infos)
@@ -354,26 +429,26 @@ impl ExtendedCompactionManager {
 mod tests {
     use super::*;
     use tempfile::tempdir;
-    
+
     #[test]
     fn test_compaction_config_leveled() {
         let config = CompactionConfig::leveled();
         assert_eq!(config.strategy, CompactionStrategyType::Leveled);
         assert_eq!(config.max_concurrent, 2);
     }
-    
+
     #[test]
     fn test_compaction_config_size_tiered() {
         let config = CompactionConfig::size_tiered();
         assert_eq!(config.strategy, CompactionStrategyType::SizeTiered);
     }
-    
+
     #[test]
     fn test_compaction_config_time_window() {
         let config = CompactionConfig::time_window(24);
         assert_eq!(config.strategy, CompactionStrategyType::TimeWindow);
     }
-    
+
     #[test]
     fn test_compaction_job_status() {
         let job = CompactionJob {
@@ -388,37 +463,37 @@ mod tests {
             completed_at: None,
             status: CompactionJobStatus::Pending,
         };
-        
+
         assert_eq!(job.status, CompactionJobStatus::Pending);
-        assert!(!job.status == CompactionJobStatus::Completed);
+        assert!(job.status != CompactionJobStatus::Completed);
     }
-    
+
     #[test]
     fn test_compaction_priority_ordering() {
         assert!(CompactionPriority::Critical > CompactionPriority::High);
         assert!(CompactionPriority::High > CompactionPriority::Medium);
         assert!(CompactionPriority::Medium > CompactionPriority::Low);
     }
-    
+
     #[test]
     fn test_compaction_manager_create() {
         let dir = tempdir().unwrap();
         let config = CompactionConfig::leveled();
         let manager = ExtendedCompactionManager::new(dir.path().to_path_buf(), config);
-        
+
         assert!(!manager.is_running());
         manager.start();
         assert!(manager.is_running());
         manager.stop();
         assert!(!manager.is_running());
     }
-    
+
     #[test]
     fn test_compaction_manager_submit_job() {
         let dir = tempdir().unwrap();
         let config = CompactionConfig::leveled();
         let manager = ExtendedCompactionManager::new(dir.path().to_path_buf(), config);
-        
+
         let job = CompactionJob {
             id: "job-1".to_string(),
             input_files: vec![],
@@ -431,17 +506,17 @@ mod tests {
             completed_at: None,
             status: CompactionJobStatus::Pending,
         };
-        
+
         manager.submit_job(job);
         assert_eq!(manager.pending_jobs().len(), 1);
     }
-    
+
     #[test]
     fn test_compaction_manager_cancel_job() {
         let dir = tempdir().unwrap();
         let config = CompactionConfig::leveled();
         let manager = ExtendedCompactionManager::new(dir.path().to_path_buf(), config);
-        
+
         let job = CompactionJob {
             id: "job-1".to_string(),
             input_files: vec![],
@@ -454,36 +529,34 @@ mod tests {
             completed_at: None,
             status: CompactionJobStatus::Pending,
         };
-        
+
         manager.submit_job(job);
         assert!(manager.cancel_job("job-1"));
         assert_eq!(manager.pending_jobs().len(), 0);
     }
-    
+
     #[test]
     fn test_compaction_scheduler_leveled() {
         let config = CompactionConfig::leveled();
         let scheduler = CompactionScheduler::new(config);
-        
-        let files = vec![
-            SSTableInfo {
-                path: PathBuf::from("l0-1.sst"),
-                size: 100 * 1024 * 1024,
-                level: 0,
-                min_key: b"a".to_vec(),
-                max_key: b"z".to_vec(),
-                min_timestamp: 0,
-                max_timestamp: 1000,
-                entry_count: 1000,
-                created_at: 0,
-            },
-        ];
-        
+
+        let files = vec![SSTableInfo {
+            path: PathBuf::from("l0-1.sst"),
+            size: 100 * 1024 * 1024,
+            level: 0,
+            min_key: b"a".to_vec(),
+            max_key: b"z".to_vec(),
+            min_timestamp: 0,
+            max_timestamp: 1000,
+            entry_count: 1000,
+            created_at: 0,
+        }];
+
         let jobs = scheduler.schedule(&files);
         // May or may not produce jobs depending on thresholds
         let _ = jobs;
     }
-    
+
     #[test]
     fn test_compaction_stats() {
         let stats = CompactionStats::default();

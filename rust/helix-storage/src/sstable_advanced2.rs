@@ -1,5 +1,5 @@
 //! Helix Storage Engine - SSTable Module (Advanced 4)
-//! 
+//!
 //! This module provides additional SSTable features including
 //! statistics, optimization, and monitoring.
 
@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// SSTable statistics (extended)
@@ -24,6 +25,8 @@ pub struct SSTableStatsExtended {
     pub compression_ratio: f64,
     pub avg_entry_size: f64,
     pub avg_block_size: f64,
+    pub density: f64,
+    pub space_efficiency: f64,
     pub read_count: u64,
     pub write_count: u64,
     pub cache_hits: u64,
@@ -34,14 +37,17 @@ pub struct SSTableStatsExtended {
 
 impl SSTableStatsExtended {
     pub fn new() -> Self {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         SSTableStatsExtended {
             created_at: now,
             last_accessed: now,
             ..Default::default()
         }
     }
-    
+
     pub fn compute(&mut self, entries: usize, size: u64, blocks: usize) {
         self.entry_count = entries;
         self.file_size = size;
@@ -53,7 +59,7 @@ impl SSTableStatsExtended {
             self.avg_block_size = size as f64 / blocks as f64;
         }
     }
-    
+
     pub fn density(&self) -> f64 {
         if self.file_size > 0 {
             self.entry_count as f64 / self.file_size as f64
@@ -61,7 +67,7 @@ impl SSTableStatsExtended {
             0.0
         }
     }
-    
+
     pub fn space_efficiency(&self) -> f64 {
         if self.file_size > 0 {
             1.0 - (self.index_size + self.bloom_filter_size) as f64 / self.file_size as f64
@@ -69,7 +75,7 @@ impl SSTableStatsExtended {
             0.0
         }
     }
-    
+
     pub fn cache_hit_rate(&self) -> f64 {
         let total = self.cache_hits + self.cache_misses;
         if total > 0 {
@@ -78,14 +84,20 @@ impl SSTableStatsExtended {
             0.0
         }
     }
-    
+
     pub fn age(&self) -> Duration {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         Duration::from_secs((now - self.created_at).max(0) as u64)
     }
-    
+
     pub fn touch(&mut self) {
-        self.last_accessed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+        self.last_accessed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
     }
 }
 
@@ -136,56 +148,56 @@ impl SSTableOptimizerExtended {
     pub fn new(config: OptimizerConfigExtended) -> Self {
         SSTableOptimizerExtended { config }
     }
-    
+
     pub fn optimize(&self, stats: &SSTableStatsExtended) -> OptimizationRecommendationExtended {
         let mut recommendations = Vec::new();
-        
+
         if stats.avg_block_size > self.config.max_block_size as f64 {
             recommendations.push("Reduce block size - blocks are too large".to_string());
         }
-        
+
         if stats.avg_block_size < self.config.min_block_size as f64 {
             recommendations.push("Increase block size - blocks are too small".to_string());
         }
-        
+
         if stats.compression_ratio > 0.8 {
             recommendations.push("Compression not effective, consider disabling".to_string());
         }
-        
+
         if stats.density() < 0.001 {
             recommendations.push("Low data density, consider compaction".to_string());
         }
-        
+
         if stats.space_efficiency() < 0.8 {
             recommendations.push("High index overhead, consider larger blocks".to_string());
         }
-        
+
         if stats.cache_hit_rate() < 0.5 {
             recommendations.push("Low cache hit rate, consider increasing cache size".to_string());
         }
-        
+
         let estimated_improvement = if recommendations.is_empty() {
             0.0
         } else {
             0.1 + 0.05 * recommendations.len() as f64
         };
-        
+
         OptimizationRecommendationExtended {
             recommendations,
             estimated_improvement,
         }
     }
-    
+
     pub fn recommend_block_size(&self, avg_entry_size: f64) -> usize {
         let target_entries = self.config.target_block_size as f64 / avg_entry_size;
         let block_size = (target_entries * avg_entry_size) as usize;
         block_size.clamp(self.config.min_block_size, self.config.max_block_size)
     }
-    
+
     pub fn recommend_bloom_filter_size(&self, num_entries: usize) -> usize {
         num_entries * self.config.bloom_filter_bits_per_key
     }
-    
+
     pub fn recommend_cache_size(&self, working_set_size: usize) -> usize {
         working_set_size * 2
     }
@@ -208,32 +220,35 @@ impl SSTableMonitorExtended {
             stats: RwLock::new(BTreeMap::new()),
         }
     }
-    
+
     pub fn record(&self, path: PathBuf, stats: SSTableStatsExtended) {
         let mut all_stats = self.stats.write().unwrap();
         all_stats.insert(path, stats);
     }
-    
+
     pub fn get(&self, path: &Path) -> Option<SSTableStatsExtended> {
         let all_stats = self.stats.read().unwrap();
         all_stats.get(path).cloned()
     }
-    
+
     pub fn all(&self) -> Vec<(PathBuf, SSTableStatsExtended)> {
         let all_stats = self.stats.read().unwrap();
-        all_stats.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        all_stats
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
     }
-    
+
     pub fn total_size(&self) -> u64 {
         let all_stats = self.stats.read().unwrap();
         all_stats.values().map(|s| s.file_size).sum()
     }
-    
+
     pub fn total_entries(&self) -> usize {
         let all_stats = self.stats.read().unwrap();
         all_stats.values().map(|s| s.entry_count).sum()
     }
-    
+
     pub fn avg_compression_ratio(&self) -> f64 {
         let all_stats = self.stats.read().unwrap();
         if all_stats.is_empty() {
@@ -242,7 +257,7 @@ impl SSTableMonitorExtended {
         let sum: f64 = all_stats.values().map(|s| s.compression_ratio).sum();
         sum / all_stats.len() as f64
     }
-    
+
     pub fn avg_cache_hit_rate(&self) -> f64 {
         let all_stats = self.stats.read().unwrap();
         if all_stats.is_empty() {
@@ -251,19 +266,27 @@ impl SSTableMonitorExtended {
         let sum: f64 = all_stats.values().map(|s| s.cache_hit_rate()).sum();
         sum / all_stats.len() as f64
     }
-    
+
     pub fn oldest(&self) -> Option<PathBuf> {
         let all_stats = self.stats.read().unwrap();
-        all_stats.iter()
+        all_stats
+            .iter()
             .min_by_key(|(_, s)| s.created_at)
             .map(|(k, _)| k.clone())
     }
-    
+
     pub fn newest(&self) -> Option<PathBuf> {
         let all_stats = self.stats.read().unwrap();
-        all_stats.iter()
+        all_stats
+            .iter()
             .max_by_key(|(_, s)| s.created_at)
             .map(|(k, _)| k.clone())
+    }
+}
+
+impl Default for SSTableMonitorExtended {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -309,7 +332,7 @@ impl SSTableValidatorExtended {
             ],
         }
     }
-    
+
     pub fn validate(&self) -> ValidationResultExtended {
         let mut result = ValidationResultExtended {
             path: self.path.clone(),
@@ -319,7 +342,7 @@ impl SSTableValidatorExtended {
             checks_passed: 0,
             checks_failed: 0,
         };
-        
+
         for check in &self.checks {
             match self.run_check(*check) {
                 Ok(()) => result.checks_passed += 1,
@@ -330,10 +353,10 @@ impl SSTableValidatorExtended {
                 }
             }
         }
-        
+
         result
     }
-    
+
     fn run_check(&self, check: ValidationCheckExtended) -> Result<(), String> {
         match check {
             ValidationCheckExtended::MagicNumber => Ok(()),
@@ -357,7 +380,7 @@ impl SSTableValidatorExtended {
             ValidationCheckExtended::Permissions => Ok(()),
         }
     }
-    
+
     pub fn validate_file(&self) -> bool {
         if !self.path.exists() {
             return false;
@@ -386,13 +409,13 @@ impl SSTableRepairerExtended {
     pub fn new(path: PathBuf) -> Self {
         SSTableRepairerExtended { path }
     }
-    
+
     pub fn repair(&self) -> io::Result<RepairResultExtended> {
         let start = std::time::Instant::now();
-        
+
         // In production, would repair corrupted SSTable
         let duration = start.elapsed();
-        
+
         Ok(RepairResultExtended {
             path: self.path.clone(),
             success: true,
@@ -414,7 +437,7 @@ pub struct RepairResultExtended {
 mod tests {
     use super::*;
     use tempfile::tempdir;
-    
+
     #[test]
     fn test_sstable_stats_extended() {
         let mut stats = SSTableStatsExtended::new();
@@ -423,7 +446,7 @@ mod tests {
         assert_eq!(stats.file_size, 1024 * 1024);
         assert_eq!(stats.block_count, 10);
     }
-    
+
     #[test]
     fn test_sstable_stats_density() {
         let stats = SSTableStatsExtended {
@@ -433,7 +456,7 @@ mod tests {
         };
         assert!(stats.density() > 0.0);
     }
-    
+
     #[test]
     fn test_sstable_stats_space_efficiency() {
         let stats = SSTableStatsExtended {
@@ -444,7 +467,7 @@ mod tests {
         };
         assert!(stats.space_efficiency() > 0.9);
     }
-    
+
     #[test]
     fn test_sstable_stats_cache_hit_rate() {
         let stats = SSTableStatsExtended {
@@ -454,7 +477,7 @@ mod tests {
         };
         assert!((stats.cache_hit_rate() - 0.8).abs() < 0.01);
     }
-    
+
     #[test]
     fn test_optimizer_config_extended() {
         let config = OptimizerConfigExtended::default();
@@ -464,12 +487,12 @@ mod tests {
         assert!(config.enable_prefetch);
         assert!(config.enable_cache);
     }
-    
+
     #[test]
     fn test_sstable_optimizer_extended() {
         let config = OptimizerConfigExtended::default();
         let optimizer = SSTableOptimizerExtended::new(config);
-        
+
         let stats = SSTableStatsExtended {
             avg_block_size: 8192.0,
             compression_ratio: 0.9,
@@ -479,91 +502,125 @@ mod tests {
             cache_misses: 50,
             ..Default::default()
         };
-        
+
         let rec = optimizer.optimize(&stats);
         assert!(!rec.recommendations.is_empty());
     }
-    
+
     #[test]
     fn test_optimizer_recommend_block_size() {
         let config = OptimizerConfigExtended::default();
         let optimizer = SSTableOptimizerExtended::new(config);
-        
+
         let size = optimizer.recommend_block_size(100.0);
         assert!(size >= 1024 && size <= 65536);
     }
-    
+
     #[test]
     fn test_optimizer_recommend_bloom_filter_size() {
         let config = OptimizerConfigExtended::default();
         let optimizer = SSTableOptimizerExtended::new(config);
-        
+
         let size = optimizer.recommend_bloom_filter_size(1000);
         assert_eq!(size, 10000);
     }
-    
+
     #[test]
     fn test_optimizer_recommend_cache_size() {
         let config = OptimizerConfigExtended::default();
         let optimizer = SSTableOptimizerExtended::new(config);
-        
+
         let size = optimizer.recommend_cache_size(1024 * 1024);
         assert_eq!(size, 2 * 1024 * 1024);
     }
-    
+
     #[test]
     fn test_sstable_monitor_extended() {
         let monitor = SSTableMonitorExtended::new();
-        let stats = SSTableStatsExtended { file_size: 1024, entry_count: 10, ..Default::default() };
+        let stats = SSTableStatsExtended {
+            file_size: 1024,
+            entry_count: 10,
+            ..Default::default()
+        };
         monitor.record(PathBuf::from("test.sst"), stats);
-        
+
         let got = monitor.get(&PathBuf::from("test.sst"));
         assert!(got.is_some());
     }
-    
+
     #[test]
     fn test_sstable_monitor_extended_total() {
         let monitor = SSTableMonitorExtended::new();
-        monitor.record(PathBuf::from("a.sst"), SSTableStatsExtended { file_size: 1024, entry_count: 10, ..Default::default() });
-        monitor.record(PathBuf::from("b.sst"), SSTableStatsExtended { file_size: 2048, entry_count: 20, ..Default::default() });
-        
+        monitor.record(
+            PathBuf::from("a.sst"),
+            SSTableStatsExtended {
+                file_size: 1024,
+                entry_count: 10,
+                ..Default::default()
+            },
+        );
+        monitor.record(
+            PathBuf::from("b.sst"),
+            SSTableStatsExtended {
+                file_size: 2048,
+                entry_count: 20,
+                ..Default::default()
+            },
+        );
+
         assert_eq!(monitor.total_size(), 3072);
         assert_eq!(monitor.total_entries(), 30);
     }
-    
+
     #[test]
     fn test_sstable_monitor_extended_avg() {
         let monitor = SSTableMonitorExtended::new();
-        monitor.record(PathBuf::from("a.sst"), SSTableStatsExtended { compression_ratio: 0.5, cache_hits: 80, cache_misses: 20, ..Default::default() });
-        monitor.record(PathBuf::from("b.sst"), SSTableStatsExtended { compression_ratio: 0.3, cache_hits: 90, cache_misses: 10, ..Default::default() });
-        
+        monitor.record(
+            PathBuf::from("a.sst"),
+            SSTableStatsExtended {
+                compression_ratio: 0.5,
+                cache_hits: 80,
+                cache_misses: 20,
+                ..Default::default()
+            },
+        );
+        monitor.record(
+            PathBuf::from("b.sst"),
+            SSTableStatsExtended {
+                compression_ratio: 0.3,
+                cache_hits: 90,
+                cache_misses: 10,
+                ..Default::default()
+            },
+        );
+
         let avg_cr = monitor.avg_compression_ratio();
         assert!((avg_cr - 0.4).abs() < 0.01);
-        
+
         let avg_chr = monitor.avg_cache_hit_rate();
         assert!(avg_chr > 0.8);
     }
-    
+
     #[test]
     fn test_sstable_validator_extended() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.sst");
-        
+
         let validator = SSTableValidatorExtended::new(path);
         let result = validator.validate();
         assert!(result.checks_passed > 0);
     }
-    
+
     #[test]
     fn test_sstable_repairer_extended() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.sst");
-        
+
         let repairer = SSTableRepairerExtended::new(path);
         let result = repairer.repair().unwrap();
         assert!(result.success);
     }
-    
+
     #[test]
     fn test_validation_result_extended() {
         let result = ValidationResultExtended {
@@ -577,7 +634,7 @@ mod tests {
         assert!(result.valid);
         assert_eq!(result.checks_passed, 12);
     }
-    
+
     #[test]
     fn test_repair_result_extended() {
         let result = RepairResultExtended {
@@ -589,7 +646,7 @@ mod tests {
         assert!(result.success);
         assert_eq!(result.issues_fixed, 3);
     }
-    
+
     #[test]
     fn test_optimization_recommendation_extended() {
         let rec = OptimizationRecommendationExtended {

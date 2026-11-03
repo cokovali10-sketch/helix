@@ -365,8 +365,48 @@ func NewSSTableReader(path string) (*SSTableReader, error) {
 		bloom: NewBloomFilter(10000, 3),
 	}
 
-	// Read index from footer
-	// Simplified - in production would read from footer
+	// Read footer (last 24 bytes: index offset, index size, entry count).
+	st, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+	if st.Size() < 24 {
+		return reader, nil
+	}
+
+	var footer SSTableFooter
+	if _, err := file.Seek(-24, io.SeekEnd); err != nil {
+		return reader, nil
+	}
+	if err := binary.Read(file, binary.LittleEndian, &footer); err != nil {
+		return reader, nil
+	}
+	if footer.NumEntries == 0 || int64(footer.IndexOffset) >= st.Size() {
+		return reader, nil
+	}
+
+	if _, err := file.Seek(int64(footer.IndexOffset), io.SeekStart); err != nil {
+		return reader, nil
+	}
+	for i := uint64(0); i < footer.NumEntries; i++ {
+		var keyLen uint32
+		if err := binary.Read(file, binary.LittleEndian, &keyLen); err != nil {
+			break
+		}
+		keyBytes := make([]byte, keyLen)
+		if _, err := io.ReadFull(file, keyBytes); err != nil {
+			break
+		}
+		var offset uint64
+		if err := binary.Read(file, binary.LittleEndian, &offset); err != nil {
+			break
+		}
+		key := string(keyBytes)
+		reader.index[key] = offset
+		reader.bloom.Add(keyBytes)
+	}
+
 	return reader, nil
 }
 

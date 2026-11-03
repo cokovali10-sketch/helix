@@ -1,13 +1,12 @@
 //! Helix Query Engine - Vectorized Executor
-//! 
+//!
 //! This module provides a vectorized execution engine for the Helix query language.
 //! Uses columnar data processing for SIMD-like performance.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
-use super::parser::{Expr, Duration};
 use super::functions::FunctionRegistry;
+use crate::parser::Expr;
 
 /// Columnar data batch
 #[derive(Debug, Clone)]
@@ -36,7 +35,7 @@ impl Column {
             Column::Labels(v) => v.len(),
         }
     }
-    
+
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -55,12 +54,12 @@ impl VectorizedExecutor {
             batch_size,
         }
     }
-    
+
     /// Execute an expression against a data batch
     pub fn execute(&self, expr: &Expr, batch: &DataBatch) -> Result<DataBatch, String> {
         match expr {
             Expr::Number(n) => {
-                let mut values = vec![*n; batch.num_rows];
+                let values = vec![*n; batch.num_rows];
                 Ok(DataBatch {
                     columns: vec![Column::Float64(values)],
                     num_rows: batch.num_rows,
@@ -73,84 +72,103 @@ impl VectorizedExecutor {
             Expr::VectorSelector { name, matchers } => {
                 self.execute_vector_selector(name, matchers, batch)
             }
-            Expr::FunctionCall { name, args } => {
-                self.execute_function(name, args, batch)
-            }
-            Expr::BinaryOp { op, left, right, bool_modifier } => {
-                self.execute_binary_op(*op, left, right, *bool_modifier, batch)
-            }
-            Expr::UnaryOp { op, expr } => {
-                self.execute_unary_op(*op, expr, batch)
-            }
-            Expr::Aggregation { op, expr, grouping, without } => {
-                self.execute_aggregation(*op, expr, grouping, *without, batch)
-            }
-            Expr::Paren(inner) => {
-                self.execute(inner, batch)
-            }
+            Expr::FunctionCall { name, args } => self.execute_function(name, args, batch),
+            Expr::BinaryOp {
+                op,
+                left,
+                right,
+                bool_modifier,
+            } => self.execute_binary_op(*op, left, right, *bool_modifier, batch),
+            Expr::UnaryOp { op, expr } => self.execute_unary_op(*op, expr, batch),
+            Expr::Aggregation {
+                op,
+                expr,
+                grouping,
+                without,
+            } => self.execute_aggregation(*op, expr, grouping, *without, batch),
+            Expr::Paren(inner) => self.execute(inner, batch),
             _ => Err("Unsupported expression type".to_string()),
         }
     }
-    
-    fn get_column(&self, batch: &DataBatch, name: &str) -> Result<DataBatch, String> {
+
+    fn get_column(&self, batch: &DataBatch, _name: &str) -> Result<DataBatch, String> {
         // Find column by name (simplified)
         if batch.columns.is_empty() {
             return Err("No columns in batch".to_string());
         }
         Ok(batch.clone())
     }
-    
-    fn execute_vector_selector(&self, name: &str, matchers: &[super::parser::Matcher], batch: &DataBatch) -> Result<DataBatch, String> {
+
+    fn execute_vector_selector(
+        &self,
+        _name: &str,
+        matchers: &[crate::parser::Matcher],
+        batch: &DataBatch,
+    ) -> Result<DataBatch, String> {
         // Filter rows based on matchers
-        let mut mask = vec![true; batch.num_rows];
-        
+        let _mask = vec![true; batch.num_rows];
+
         for matcher in matchers {
             match matcher.op {
-                super::parser::MatchOp::Equal => {
+                crate::parser::MatchOp::Equal => {
                     // Filter rows where label equals value
                 }
-                super::parser::MatchOp::NotEqual => {
+                crate::parser::MatchOp::NotEqual => {
                     // Filter rows where label doesn't equal value
                 }
-                super::parser::MatchOp::RegexMatch => {
+                crate::parser::MatchOp::RegexMatch => {
                     // Filter rows matching regex
                 }
-                super::parser::MatchOp::RegexNotMatch => {
+                crate::parser::MatchOp::RegexNotMatch => {
                     // Filter rows not matching regex
                 }
             }
         }
-        
+
         // Apply mask to batch
         Ok(batch.clone())
     }
-    
-    fn execute_function(&self, name: &str, args: &[Expr], batch: &DataBatch) -> Result<DataBatch, String> {
+
+    fn execute_function(
+        &self,
+        name: &str,
+        args: &[Expr],
+        batch: &DataBatch,
+    ) -> Result<DataBatch, String> {
         // Evaluate arguments
         let mut arg_results = Vec::new();
         for arg in args {
             arg_results.push(self.execute(arg, batch)?);
         }
-        
+
         // Look up function
-        let func = self.function_registry.get(name)
+        let func = self
+            .function_registry
+            .get(name)
             .ok_or_else(|| format!("Unknown function: {}", name))?;
-        
+
         // Convert batch to samples
         let samples = self.batch_to_samples(&arg_results[0]);
-        
+
         // Call function
         let ctx = super::functions::FunctionContext::new(0, 1, 0);
         let result = func.call(&samples, &ctx)?;
-        
+
         // Convert result back to batch
         self.samples_to_batch(&result)
     }
-    
-    fn execute_binary_op(&self, op: super::parser::BinaryOperator, left: &Expr, right: &Expr, bool_modifier: bool, batch: &DataBatch) -> Result<DataBatch, String> {
+
+    fn execute_binary_op(
+        &self,
+        op: crate::parser::BinaryOperator,
+        left: &Expr,
+        right: &Expr,
+        _bool_modifier: bool,
+        batch: &DataBatch,
+    ) -> Result<DataBatch, String> {
         let left_batch = self.execute(left, batch)?;
         let right_batch = self.execute(right, batch)?;
-        
+
         // Apply binary operation element-wise
         let left_vals = match &left_batch.columns[0] {
             Column::Float64(v) => v.clone(),
@@ -160,102 +178,144 @@ impl VectorizedExecutor {
             Column::Float64(v) => v.clone(),
             _ => return Err("Expected float64 column".to_string()),
         };
-        
+
         let mut result = Vec::with_capacity(left_vals.len());
         for i in 0..left_vals.len() {
             let val = match op {
-                super::parser::BinaryOperator::Add => left_vals[i] + right_vals[i],
-                super::parser::BinaryOperator::Sub => left_vals[i] - right_vals[i],
-                super::parser::BinaryOperator::Mul => left_vals[i] * right_vals[i],
-                super::parser::BinaryOperator::Div => {
+                crate::parser::BinaryOperator::Add => left_vals[i] + right_vals[i],
+                crate::parser::BinaryOperator::Sub => left_vals[i] - right_vals[i],
+                crate::parser::BinaryOperator::Mul => left_vals[i] * right_vals[i],
+                crate::parser::BinaryOperator::Div => {
                     if right_vals[i] != 0.0 {
                         left_vals[i] / right_vals[i]
                     } else {
                         f64::NAN
                     }
                 }
-                super::parser::BinaryOperator::Mod => left_vals[i] % right_vals[i],
-                super::parser::BinaryOperator::Pow => left_vals[i].powf(right_vals[i]),
-                super::parser::BinaryOperator::Equal => {
-                    if (left_vals[i] - right_vals[i]).abs() < f64::EPSILON { 1.0 } else { 0.0 }
+                crate::parser::BinaryOperator::Mod => left_vals[i] % right_vals[i],
+                crate::parser::BinaryOperator::Pow => left_vals[i].powf(right_vals[i]),
+                crate::parser::BinaryOperator::Equal => {
+                    if (left_vals[i] - right_vals[i]).abs() < f64::EPSILON {
+                        1.0
+                    } else {
+                        0.0
+                    }
                 }
-                super::parser::BinaryOperator::NotEqual => {
-                    if (left_vals[i] - right_vals[i]).abs() >= f64::EPSILON { 1.0 } else { 0.0 }
+                crate::parser::BinaryOperator::NotEqual => {
+                    if (left_vals[i] - right_vals[i]).abs() >= f64::EPSILON {
+                        1.0
+                    } else {
+                        0.0
+                    }
                 }
-                super::parser::BinaryOperator::GreaterThan => {
-                    if left_vals[i] > right_vals[i] { 1.0 } else { 0.0 }
+                crate::parser::BinaryOperator::GreaterThan => {
+                    if left_vals[i] > right_vals[i] {
+                        1.0
+                    } else {
+                        0.0
+                    }
                 }
-                super::parser::BinaryOperator::LessThan => {
-                    if left_vals[i] < right_vals[i] { 1.0 } else { 0.0 }
+                crate::parser::BinaryOperator::LessThan => {
+                    if left_vals[i] < right_vals[i] {
+                        1.0
+                    } else {
+                        0.0
+                    }
                 }
-                super::parser::BinaryOperator::GreaterThanOrEqual => {
-                    if left_vals[i] >= right_vals[i] { 1.0 } else { 0.0 }
+                crate::parser::BinaryOperator::GreaterThanOrEqual => {
+                    if left_vals[i] >= right_vals[i] {
+                        1.0
+                    } else {
+                        0.0
+                    }
                 }
-                super::parser::BinaryOperator::LessThanOrEqual => {
-                    if left_vals[i] <= right_vals[i] { 1.0 } else { 0.0 }
+                crate::parser::BinaryOperator::LessThanOrEqual => {
+                    if left_vals[i] <= right_vals[i] {
+                        1.0
+                    } else {
+                        0.0
+                    }
                 }
                 _ => f64::NAN,
             };
             result.push(val);
         }
-        
+
+        let num_rows = result.len();
         Ok(DataBatch {
             columns: vec![Column::Float64(result)],
-            num_rows: result.len(),
+            num_rows,
         })
     }
-    
-    fn execute_unary_op(&self, op: super::parser::UnaryOperator, expr: &Expr, batch: &DataBatch) -> Result<DataBatch, String> {
+
+    fn execute_unary_op(
+        &self,
+        op: crate::parser::UnaryOperator,
+        expr: &Expr,
+        batch: &DataBatch,
+    ) -> Result<DataBatch, String> {
         let inner = self.execute(expr, batch)?;
         let values = match &inner.columns[0] {
             Column::Float64(v) => v.clone(),
             _ => return Err("Expected float64 column".to_string()),
         };
-        
-        let result: Vec<f64> = values.iter().map(|v| match op {
-            super::parser::UnaryOperator::Plus => *v,
-            super::parser::UnaryOperator::Minus => -*v,
-        }).collect();
-        
+
+        let result: Vec<f64> = values
+            .iter()
+            .map(|v| match op {
+                crate::parser::UnaryOperator::Plus => *v,
+                crate::parser::UnaryOperator::Minus => -*v,
+            })
+            .collect();
+
+        let num_rows = result.len();
         Ok(DataBatch {
             columns: vec![Column::Float64(result)],
-            num_rows: result.len(),
+            num_rows,
         })
     }
-    
-    fn execute_aggregation(&self, op: super::parser::AggregationOp, expr: &Expr, grouping: &[String], without: bool, batch: &DataBatch) -> Result<DataBatch, String> {
+
+    fn execute_aggregation(
+        &self,
+        _op: crate::parser::AggregationOp,
+        expr: &Expr,
+        _grouping: &[String],
+        _without: bool,
+        batch: &DataBatch,
+    ) -> Result<DataBatch, String> {
         let inner = self.execute(expr, batch)?;
-        
+
         // Group by labels and aggregate
         let values = match &inner.columns[0] {
             Column::Float64(v) => v.clone(),
             _ => return Err("Expected float64 column".to_string()),
         };
-        
+
         // Simplified aggregation - just return sum
         let sum: f64 = values.iter().sum();
-        
+
         Ok(DataBatch {
             columns: vec![Column::Float64(vec![sum])],
             num_rows: 1,
         })
     }
-    
+
     fn batch_to_samples(&self, batch: &DataBatch) -> Vec<super::MetricSample> {
         let values = match &batch.columns[0] {
             Column::Float64(v) => v.clone(),
             _ => vec![],
         };
-        
-        values.iter().enumerate().map(|(i, v)| {
-            super::MetricSample {
+
+        values
+            .iter()
+            .map(|v| super::MetricSample {
                 labels: BTreeMap::new(),
                 value: *v,
                 timestamp: 0,
-            }
-        }).collect()
+            })
+            .collect()
     }
-    
+
     fn samples_to_batch(&self, samples: &[super::MetricSample]) -> Result<DataBatch, String> {
         let values: Vec<f64> = samples.iter().map(|s| s.value).collect();
         Ok(DataBatch {
@@ -276,16 +336,41 @@ pub struct ExecutionPlan {
 /// Execution step
 #[derive(Debug, Clone)]
 pub enum ExecutionStep {
-    Scan { table: String, columns: Vec<String> },
-    Filter { predicate: String },
-    Project { columns: Vec<String> },
-    Aggregate { op: String, group_by: Vec<String> },
-    Sort { columns: Vec<String>, ascending: bool },
-    Limit { count: usize },
-    Offset { count: usize },
-    Join { left: String, right: String, on: String },
-    Union { inputs: Vec<String> },
-    Intersect { inputs: Vec<String> },
+    Scan {
+        table: String,
+        columns: Vec<String>,
+    },
+    Filter {
+        predicate: String,
+    },
+    Project {
+        columns: Vec<String>,
+    },
+    Aggregate {
+        op: String,
+        group_by: Vec<String>,
+    },
+    Sort {
+        columns: Vec<String>,
+        ascending: bool,
+    },
+    Limit {
+        count: usize,
+    },
+    Offset {
+        count: usize,
+    },
+    Join {
+        left: String,
+        right: String,
+        on: String,
+    },
+    Union {
+        inputs: Vec<String>,
+    },
+    Intersect {
+        inputs: Vec<String>,
+    },
 }
 
 /// Plan builder
@@ -303,7 +388,7 @@ impl PlanBuilder {
             },
         }
     }
-    
+
     pub fn scan(mut self, table: &str, columns: Vec<String>) -> Self {
         self.plan.steps.push(ExecutionStep::Scan {
             table: table.to_string(),
@@ -311,19 +396,19 @@ impl PlanBuilder {
         });
         self
     }
-    
+
     pub fn filter(mut self, predicate: &str) -> Self {
         self.plan.steps.push(ExecutionStep::Filter {
             predicate: predicate.to_string(),
         });
         self
     }
-    
+
     pub fn project(mut self, columns: Vec<String>) -> Self {
         self.plan.steps.push(ExecutionStep::Project { columns });
         self
     }
-    
+
     pub fn aggregate(mut self, op: &str, group_by: Vec<String>) -> Self {
         self.plan.steps.push(ExecutionStep::Aggregate {
             op: op.to_string(),
@@ -331,37 +416,45 @@ impl PlanBuilder {
         });
         self
     }
-    
+
     pub fn sort(mut self, columns: Vec<String>, ascending: bool) -> Self {
-        self.plan.steps.push(ExecutionStep::Sort { columns, ascending });
+        self.plan
+            .steps
+            .push(ExecutionStep::Sort { columns, ascending });
         self
     }
-    
+
     pub fn limit(mut self, count: usize) -> Self {
         self.plan.steps.push(ExecutionStep::Limit { count });
         self
     }
-    
+
     pub fn offset(mut self, count: usize) -> Self {
         self.plan.steps.push(ExecutionStep::Offset { count });
         self
     }
-    
+
     pub fn build(self) -> ExecutionPlan {
         self.plan
+    }
+}
+
+impl Default for PlanBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_vectorized_executor_creation() {
         let executor = VectorizedExecutor::new(1024);
         assert_eq!(executor.batch_size, 1024);
     }
-    
+
     #[test]
     fn test_execute_number() {
         let executor = VectorizedExecutor::new(1024);
@@ -377,7 +470,7 @@ mod tests {
             _ => panic!("Expected Float64 column"),
         }
     }
-    
+
     #[test]
     fn test_execute_binary_add() {
         let executor = VectorizedExecutor::new(1024);
@@ -386,7 +479,7 @@ mod tests {
             num_rows: 3,
         };
         let expr = Expr::BinaryOp {
-            op: super::parser::BinaryOperator::Add,
+            op: crate::parser::BinaryOperator::Add,
             left: Box::new(Expr::Number(10.0)),
             right: Box::new(Expr::Number(5.0)),
             bool_modifier: false,
@@ -399,7 +492,7 @@ mod tests {
             _ => panic!("Expected Float64 column"),
         }
     }
-    
+
     #[test]
     fn test_execute_unary_minus() {
         let executor = VectorizedExecutor::new(1024);
@@ -408,7 +501,7 @@ mod tests {
             num_rows: 3,
         };
         let expr = Expr::UnaryOp {
-            op: super::parser::UnaryOperator::Minus,
+            op: crate::parser::UnaryOperator::Minus,
             expr: Box::new(Expr::Number(5.0)),
         };
         let result = executor.execute(&expr, &batch).unwrap();
@@ -419,7 +512,7 @@ mod tests {
             _ => panic!("Expected Float64 column"),
         }
     }
-    
+
     #[test]
     fn test_plan_builder() {
         let plan = PlanBuilder::new()
@@ -430,20 +523,20 @@ mod tests {
             .sort(vec!["value".to_string()], false)
             .limit(100)
             .build();
-        
+
         assert_eq!(plan.steps.len(), 6);
     }
-    
+
     #[test]
     fn test_column_len() {
         let col = Column::Float64(vec![1.0, 2.0, 3.0]);
         assert_eq!(col.len(), 3);
         assert!(!col.is_empty());
-        
+
         let empty = Column::Float64(vec![]);
         assert!(empty.is_empty());
     }
-    
+
     #[test]
     fn test_data_batch() {
         let batch = DataBatch {

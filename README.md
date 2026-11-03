@@ -13,7 +13,7 @@
 [![Go](https://img.shields.io/badge/Go-1.21-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![Rust](https://img.shields.io/badge/Rust-stable-dea584?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Lines](https://img.shields.io/badge/lines-~106k-a78bfa)](#components)
+[![Lines](https://img.shields.io/badge/lines-~45k-a78bfa)](#components)
 [![Status](https://img.shields.io/badge/status-early%20alpha-f59e0b)](#honest-assessment)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -58,10 +58,10 @@ flowchart LR
 | 🤖 Event Agent | Go | ~2 000 | Collection with backpressure + plugin pipeline |
 | 🛠️ CLI | Go | ~2 200 | Command-line tooling |
 | 📜 API Definitions | Go | ~4 800 | gRPC + REST |
-| ☸️ Helm Charts | YAML | ~16 700 | Kubernetes deployment |
+| ☸️ Helm Charts | YAML | ~16 700 | Kubernetes deployment manifests (generated) |
 | 📊 Benchmarks | Rust | — | Criterion perf suites |
 
-**Total: ~106 000 lines** across Go, Rust and TypeScript.
+**Total: ~45 000 lines of code (raw, incl. blanks/comments) across Go, Rust and TypeScript.**
 
 ## Project Structure
 

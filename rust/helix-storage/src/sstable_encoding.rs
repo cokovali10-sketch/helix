@@ -1,10 +1,10 @@
 //! Helix Storage Engine - SSTable Module (Advanced 2)
-//! 
+//!
 //! This module provides additional SSTable features including
 //! encoding, decoding, and validation.
 
 use std::collections::BTreeMap;
-use std::io::{self, Read, Write};
+use std::io::{self};
 
 /// SSTable encoding types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,7 +29,7 @@ impl SSTableEncoder {
             buffer: Vec::new(),
         }
     }
-    
+
     pub fn encode(&mut self, data: &[u8]) -> io::Result<Vec<u8>> {
         match self.encoding {
             EncodingType::Plain => Ok(data.to_vec()),
@@ -39,7 +39,7 @@ impl SSTableEncoder {
             EncodingType::BitPacking => self.bitpack_encode(data),
         }
     }
-    
+
     fn delta_encode(&self, data: &[u8]) -> io::Result<Vec<u8>> {
         if data.is_empty() {
             return Ok(Vec::new());
@@ -51,7 +51,7 @@ impl SSTableEncoder {
         }
         Ok(result)
     }
-    
+
     fn rle_encode(&self, data: &[u8]) -> io::Result<Vec<u8>> {
         if data.is_empty() {
             return Ok(Vec::new());
@@ -77,35 +77,35 @@ impl SSTableEncoder {
         }
         Ok(result)
     }
-    
+
     fn dictionary_encode(&self, data: &[u8]) -> io::Result<Vec<u8>> {
         // Simple dictionary encoding
         let mut dict: BTreeMap<u8, u8> = BTreeMap::new();
         let mut next_code = 0u8;
         let mut result = Vec::new();
-        
+
         for &byte in data {
-            if !dict.contains_key(&byte) {
-                dict.insert(byte, next_code);
+            if let std::collections::btree_map::Entry::Vacant(e) = dict.entry(byte) {
+                e.insert(next_code);
                 next_code += 1;
             }
         }
-        
+
         // Write dictionary
         result.push(dict.len() as u8);
         for (k, v) in &dict {
             result.push(*k);
             result.push(*v);
         }
-        
+
         // Write encoded data
         for &byte in data {
             result.push(dict[&byte]);
         }
-        
+
         Ok(result)
     }
-    
+
     fn bitpack_encode(&self, data: &[u8]) -> io::Result<Vec<u8>> {
         // Simple bit packing (8 bits -> 4 bits for values 0-15)
         let mut result = Vec::new();
@@ -133,7 +133,7 @@ impl SSTableDecoder {
     pub fn new(encoding: EncodingType) -> Self {
         SSTableDecoder { encoding }
     }
-    
+
     pub fn decode(&self, data: &[u8]) -> io::Result<Vec<u8>> {
         match self.encoding {
             EncodingType::Plain => Ok(data.to_vec()),
@@ -143,7 +143,7 @@ impl SSTableDecoder {
             EncodingType::BitPacking => self.bitpack_decode(data),
         }
     }
-    
+
     fn delta_decode(&self, data: &[u8]) -> io::Result<Vec<u8>> {
         if data.is_empty() {
             return Ok(Vec::new());
@@ -155,7 +155,7 @@ impl SSTableDecoder {
         }
         Ok(result)
     }
-    
+
     fn rle_decode(&self, data: &[u8]) -> io::Result<Vec<u8>> {
         let mut result = Vec::new();
         let mut i = 0;
@@ -174,36 +174,40 @@ impl SSTableDecoder {
         }
         Ok(result)
     }
-    
+
     fn dictionary_decode(&self, data: &[u8]) -> io::Result<Vec<u8>> {
         if data.is_empty() {
             return Ok(Vec::new());
         }
-        
+
         let dict_size = data[0] as usize;
         let mut offset = 1;
         let mut dict: BTreeMap<u8, u8> = BTreeMap::new();
-        
+
         for _ in 0..dict_size {
             if offset + 2 > data.len() {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "truncated dictionary"));
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "truncated dictionary",
+                ));
             }
             let key = data[offset];
             let value = data[offset + 1];
             dict.insert(value, key);
             offset += 2;
         }
-        
+
         let mut result = Vec::new();
+        #[allow(clippy::needless_range_loop)]
         for i in offset..data.len() {
             if let Some(&byte) = dict.get(&data[i]) {
                 result.push(byte);
             }
         }
-        
+
         Ok(result)
     }
-    
+
     fn bitpack_decode(&self, data: &[u8]) -> io::Result<Vec<u8>> {
         let mut result = Vec::new();
         for &byte in data {
@@ -248,7 +252,7 @@ impl SSTableValidator {
             ],
         }
     }
-    
+
     pub fn validate(&self) -> ValidationResult {
         let mut result = ValidationResult {
             path: self.path.clone(),
@@ -258,7 +262,7 @@ impl SSTableValidator {
             checks_passed: 0,
             checks_failed: 0,
         };
-        
+
         for check in &self.checks {
             match self.run_check(*check) {
                 Ok(()) => result.checks_passed += 1,
@@ -269,10 +273,10 @@ impl SSTableValidator {
                 }
             }
         }
-        
+
         result
     }
-    
+
     fn run_check(&self, check: ValidationCheck) -> Result<(), String> {
         match check {
             ValidationCheck::MagicNumber => Ok(()),
@@ -300,75 +304,75 @@ pub struct ValidationResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_delta_encode_decode() {
-        let encoder = SSTableEncoder::new(EncodingType::Delta);
+        let mut encoder = SSTableEncoder::new(EncodingType::Delta);
         let decoder = SSTableDecoder::new(EncodingType::Delta);
-        
+
         let data = vec![10, 12, 15, 14, 18];
         let encoded = encoder.encode(&data).unwrap();
         let decoded = decoder.decode(&encoded).unwrap();
-        
+
         assert_eq!(data, decoded);
     }
-    
+
     #[test]
     fn test_rle_encode_decode() {
-        let encoder = SSTableEncoder::new(EncodingType::RLE);
+        let mut encoder = SSTableEncoder::new(EncodingType::RLE);
         let decoder = SSTableDecoder::new(EncodingType::RLE);
-        
+
         let data = vec![5, 5, 5, 5, 5, 1, 2, 3];
         let encoded = encoder.encode(&data).unwrap();
         let decoded = decoder.decode(&encoded).unwrap();
-        
+
         assert_eq!(data, decoded);
     }
-    
+
     #[test]
     fn test_dictionary_encode_decode() {
-        let encoder = SSTableEncoder::new(EncodingType::Dictionary);
+        let mut encoder = SSTableEncoder::new(EncodingType::Dictionary);
         let decoder = SSTableDecoder::new(EncodingType::Dictionary);
-        
+
         let data = vec![1, 2, 1, 3, 2, 1];
         let encoded = encoder.encode(&data).unwrap();
         let decoded = decoder.decode(&encoded).unwrap();
-        
+
         assert_eq!(data, decoded);
     }
-    
+
     #[test]
     fn test_bitpack_encode_decode() {
-        let encoder = SSTableEncoder::new(EncodingType::BitPacking);
+        let mut encoder = SSTableEncoder::new(EncodingType::BitPacking);
         let decoder = SSTableDecoder::new(EncodingType::BitPacking);
-        
+
         let data = vec![1, 2, 3, 4, 5];
         let encoded = encoder.encode(&data).unwrap();
         let decoded = decoder.decode(&encoded).unwrap();
-        
+
         // Bitpacking may pad, so check prefix
         assert!(decoded.len() >= data.len());
     }
-    
+
     #[test]
     fn test_plain_encode_decode() {
-        let encoder = SSTableEncoder::new(EncodingType::Plain);
+        let mut encoder = SSTableEncoder::new(EncodingType::Plain);
         let decoder = SSTableDecoder::new(EncodingType::Plain);
-        
+
         let data = vec![1, 2, 3, 4, 5];
         let encoded = encoder.encode(&data).unwrap();
         let decoded = decoder.decode(&encoded).unwrap();
-        
+
         assert_eq!(data, decoded);
     }
-    
+
     #[test]
     fn test_sstable_validator() {
         let validator = SSTableValidator::new(std::path::PathBuf::from("test.sst"));
         let result = validator.validate();
         assert!(result.checks_passed > 0);
     }
-    
+
     #[test]
     fn test_encoding_type() {
         assert_eq!(EncodingType::Plain, EncodingType::Plain);

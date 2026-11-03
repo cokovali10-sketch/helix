@@ -1,10 +1,10 @@
 //! Helix Query Engine - Optimizer Module
-//! 
+//!
 //! This module provides query optimization for the Helix query language.
 //! Includes rule-based and cost-based optimization.
 
+use super::{Query, QueryPlan};
 use std::collections::BTreeMap;
-use super::{Query, QueryPlan, MetricSample};
 
 /// Query optimizer
 pub struct QueryOptimizer {
@@ -28,6 +28,7 @@ pub struct CostModel {
 }
 
 impl CostModel {
+    #[allow(clippy::should_implement_trait)]
     pub fn default() -> Self {
         CostModel {
             cpu_cost_per_row: 0.001,
@@ -36,7 +37,7 @@ impl CostModel {
             memory_cost_per_byte: 0.00001,
         }
     }
-    
+
     pub fn estimate_cost(&self, rows: usize, blocks: usize, bytes: usize) -> f64 {
         rows as f64 * self.cpu_cost_per_row
             + blocks as f64 * self.io_cost_per_block
@@ -50,7 +51,7 @@ impl QueryOptimizer {
             rules: Vec::new(),
             cost_model: CostModel::default(),
         };
-        
+
         // Register default optimization rules
         optimizer.add_rule(Box::new(PredicatePushdownRule));
         optimizer.add_rule(Box::new(ProjectionPushdownRule));
@@ -62,37 +63,37 @@ impl QueryOptimizer {
         optimizer.add_rule(Box::new(IndexSelectionRule));
         optimizer.add_rule(Box::new(CacheAwarenessRule));
         optimizer.add_rule(Box::new(VectorizationRule));
-        
+
         optimizer
     }
-    
+
     pub fn add_rule(&mut self, rule: Box<dyn OptimizationRule>) {
         self.rules.push(rule);
     }
-    
+
     pub fn optimize(&self, plan: &mut QueryPlan) -> OptimizationResult {
         let mut applied_rules = Vec::new();
         let mut iterations = 0;
         let max_iterations = 10;
-        
+
         let original_cost = plan.estimated_cost;
-        
+
         while iterations < max_iterations {
             let mut changed = false;
-            
+
             for rule in &self.rules {
                 if rule.apply(plan) {
                     applied_rules.push(rule.name().to_string());
                     changed = true;
                 }
             }
-            
+
             if !changed {
                 break;
             }
             iterations += 1;
         }
-        
+
         OptimizationResult {
             original_cost,
             optimized_cost: plan.estimated_cost,
@@ -104,6 +105,12 @@ impl QueryOptimizer {
                 0.0
             },
         }
+    }
+}
+
+impl Default for QueryOptimizer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -125,12 +132,14 @@ pub struct OptimizationResult {
 pub struct PredicatePushdownRule;
 
 impl OptimizationRule for PredicatePushdownRule {
-    fn name(&self) -> &'static str { "predicate_pushdown" }
+    fn name(&self) -> &'static str {
+        "predicate_pushdown"
+    }
     fn apply(&self, plan: &mut QueryPlan) -> bool {
         // Move filter operations earlier in the plan
         let filter_idx = plan.steps.iter().position(|s| s == "filter_labels");
         let fetch_idx = plan.steps.iter().position(|s| s == "fetch_from_storage");
-        
+
         if let (Some(fi), Some(fi2)) = (filter_idx, fetch_idx) {
             if fi > fi2 {
                 // Move filter before fetch
@@ -150,8 +159,10 @@ impl OptimizationRule for PredicatePushdownRule {
 pub struct ProjectionPushdownRule;
 
 impl OptimizationRule for ProjectionPushdownRule {
-    fn name(&self) -> &'static str { "projection_pushdown" }
-    fn apply(&self, plan: &mut QueryPlan) -> bool {
+    fn name(&self) -> &'static str {
+        "projection_pushdown"
+    }
+    fn apply(&self, _plan: &mut QueryPlan) -> bool {
         // Push projection (column selection) down
         // Simplified: no-op for now
         false
@@ -165,8 +176,10 @@ impl OptimizationRule for ProjectionPushdownRule {
 pub struct ConstantFoldingRule;
 
 impl OptimizationRule for ConstantFoldingRule {
-    fn name(&self) -> &'static str { "constant_folding" }
-    fn apply(&self, plan: &mut QueryPlan) -> bool {
+    fn name(&self) -> &'static str {
+        "constant_folding"
+    }
+    fn apply(&self, _plan: &mut QueryPlan) -> bool {
         // Fold constant expressions at compile time
         false
     }
@@ -179,7 +192,9 @@ impl OptimizationRule for ConstantFoldingRule {
 pub struct DeadCodeEliminationRule;
 
 impl OptimizationRule for DeadCodeEliminationRule {
-    fn name(&self) -> &'static str { "dead_code_elimination" }
+    fn name(&self) -> &'static str {
+        "dead_code_elimination"
+    }
     fn apply(&self, plan: &mut QueryPlan) -> bool {
         // Remove unused computation steps
         let original_len = plan.steps.len();
@@ -195,8 +210,10 @@ impl OptimizationRule for DeadCodeEliminationRule {
 pub struct JoinReorderingRule;
 
 impl OptimizationRule for JoinReorderingRule {
-    fn name(&self) -> &'static str { "join_reordering" }
-    fn apply(&self, plan: &mut QueryPlan) -> bool {
+    fn name(&self) -> &'static str {
+        "join_reordering"
+    }
+    fn apply(&self, _plan: &mut QueryPlan) -> bool {
         // Reorder joins for optimal performance
         false
     }
@@ -209,8 +226,10 @@ impl OptimizationRule for JoinReorderingRule {
 pub struct AggregationPushdownRule;
 
 impl OptimizationRule for AggregationPushdownRule {
-    fn name(&self) -> &'static str { "aggregation_pushdown" }
-    fn apply(&self, plan: &mut QueryPlan) -> bool {
+    fn name(&self) -> &'static str {
+        "aggregation_pushdown"
+    }
+    fn apply(&self, _plan: &mut QueryPlan) -> bool {
         // Push aggregation down to storage
         false
     }
@@ -223,7 +242,9 @@ impl OptimizationRule for AggregationPushdownRule {
 pub struct PartitionPruningRule;
 
 impl OptimizationRule for PartitionPruningRule {
-    fn name(&self) -> &'static str { "partition_pruning" }
+    fn name(&self) -> &'static str {
+        "partition_pruning"
+    }
     fn apply(&self, plan: &mut QueryPlan) -> bool {
         // Prune partitions based on time range
         let has_filter = plan.steps.iter().any(|s| s == "filter_time_range");
@@ -245,8 +266,10 @@ impl OptimizationRule for PartitionPruningRule {
 pub struct IndexSelectionRule;
 
 impl OptimizationRule for IndexSelectionRule {
-    fn name(&self) -> &'static str { "index_selection" }
-    fn apply(&self, plan: &mut QueryPlan) -> bool {
+    fn name(&self) -> &'static str {
+        "index_selection"
+    }
+    fn apply(&self, _plan: &mut QueryPlan) -> bool {
         // Select optimal index for query
         false
     }
@@ -259,7 +282,9 @@ impl OptimizationRule for IndexSelectionRule {
 pub struct CacheAwarenessRule;
 
 impl OptimizationRule for CacheAwarenessRule {
-    fn name(&self) -> &'static str { "cache_awareness" }
+    fn name(&self) -> &'static str {
+        "cache_awareness"
+    }
     fn apply(&self, plan: &mut QueryPlan) -> bool {
         // Add cache lookup step
         if !plan.steps.contains(&"check_cache".to_string()) {
@@ -277,7 +302,9 @@ impl OptimizationRule for CacheAwarenessRule {
 pub struct VectorizationRule;
 
 impl OptimizationRule for VectorizationRule {
-    fn name(&self) -> &'static str { "vectorization" }
+    fn name(&self) -> &'static str {
+        "vectorization"
+    }
     fn apply(&self, plan: &mut QueryPlan) -> bool {
         // Enable vectorized execution
         if !plan.steps.contains(&"vectorize".to_string()) {
@@ -306,20 +333,20 @@ impl QueryPlanner {
             optimizer: QueryOptimizer::new(),
         }
     }
-    
+
     pub fn plan(&self, query: &Query) -> QueryPlan {
         let mut plan = QueryPlan::default();
-        
+
         // Basic plan from query type
         match query.query_type {
-            super::QueryType::InstantVector { .. } => {
+            crate::QueryType::InstantVector { .. } => {
                 plan.steps = vec![
                     "fetch_from_storage".to_string(),
                     "compute_instant".to_string(),
                     "post_process".to_string(),
                 ];
             }
-            super::QueryType::RangeVector { .. } => {
+            crate::QueryType::RangeVector { .. } => {
                 plan.steps = vec![
                     "fetch_from_storage".to_string(),
                     "aggregate_range".to_string(),
@@ -327,7 +354,14 @@ impl QueryPlanner {
                     "post_process".to_string(),
                 ];
             }
-            super::QueryType::Scalar | super::QueryType::String => {
+            crate::QueryType::VectorSelector => {
+                plan.steps = vec![
+                    "fetch_from_storage".to_string(),
+                    "select_vector".to_string(),
+                    "post_process".to_string(),
+                ];
+            }
+            crate::QueryType::Scalar | crate::QueryType::String => {
                 plan.steps = vec![
                     "fetch_from_storage".to_string(),
                     "aggregate".to_string(),
@@ -335,17 +369,23 @@ impl QueryPlanner {
                 ];
             }
         }
-        
+
         // Add filters
         if !query.labels.is_empty() {
             plan.steps.insert(0, "filter_labels".to_string());
         }
         plan.steps.insert(1, "filter_time_range".to_string());
-        
+
         // Optimize
         let _ = self.optimizer.optimize(&mut plan);
-        
+
         plan
+    }
+}
+
+impl Default for QueryPlanner {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -369,7 +409,7 @@ impl TableStats {
     pub fn new() -> Self {
         TableStats::default()
     }
-    
+
     pub fn density(&self) -> f64 {
         if self.byte_size > 0 {
             self.row_count as f64 / self.byte_size as f64
@@ -377,8 +417,8 @@ impl TableStats {
             0.0
         }
     }
-    
-    pub fn selectivity(&self, predicate: &str) -> f64 {
+
+    pub fn selectivity(&self, _predicate: &str) -> f64 {
         // Simplified selectivity estimation
         0.1
     }
@@ -408,35 +448,41 @@ impl ColumnStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_query_optimizer_creation() {
         let optimizer = QueryOptimizer::new();
         assert_eq!(optimizer.rules.len(), 10);
     }
-    
+
     #[test]
     fn test_predicate_pushdown() {
         let rule = PredicatePushdownRule;
         let mut plan = QueryPlan {
-            steps: vec!["fetch_from_storage".to_string(), "filter_labels".to_string()],
+            steps: vec![
+                "fetch_from_storage".to_string(),
+                "filter_labels".to_string(),
+            ],
             ..Default::default()
         };
         assert!(rule.apply(&mut plan));
         assert_eq!(plan.steps[0], "filter_labels");
     }
-    
+
     #[test]
     fn test_partition_pruning() {
         let rule = PartitionPruningRule;
         let mut plan = QueryPlan {
-            steps: vec!["filter_time_range".to_string(), "fetch_from_storage".to_string()],
+            steps: vec![
+                "filter_time_range".to_string(),
+                "fetch_from_storage".to_string(),
+            ],
             ..Default::default()
         };
         assert!(rule.apply(&mut plan));
         assert!(plan.steps.contains(&"prune_partitions".to_string()));
     }
-    
+
     #[test]
     fn test_cache_awareness() {
         let rule = CacheAwarenessRule;
@@ -447,7 +493,7 @@ mod tests {
         assert!(rule.apply(&mut plan));
         assert!(plan.steps.contains(&"check_cache".to_string()));
     }
-    
+
     #[test]
     fn test_vectorization() {
         let rule = VectorizationRule;
@@ -458,14 +504,14 @@ mod tests {
         assert!(rule.apply(&mut plan));
         assert!(plan.steps.contains(&"vectorize".to_string()));
     }
-    
+
     #[test]
     fn test_cost_model() {
         let model = CostModel::default();
         let cost = model.estimate_cost(1000, 10, 10000);
         assert!(cost > 0.0);
     }
-    
+
     #[test]
     fn test_table_stats() {
         let stats = TableStats {
@@ -475,7 +521,7 @@ mod tests {
         };
         assert!(stats.density() > 0.0);
     }
-    
+
     #[test]
     fn test_optimization_result() {
         let mut plan = QueryPlan {
@@ -483,23 +529,29 @@ mod tests {
             estimated_cost: 100.0,
             ..Default::default()
         };
-        
+
         let optimizer = QueryOptimizer::new();
         let result = optimizer.optimize(&mut plan);
-        
+
         assert!(result.improvement_percent >= 0.0);
     }
-    
+
     #[test]
     fn test_query_planner() {
         let planner = QueryPlanner::new();
         let query = Query {
-            query_type: super::QueryType::InstantVector { labels: BTreeMap::new() },
+            query_type: crate::QueryType::InstantVector {
+                labels: BTreeMap::new(),
+            },
             expression: "cpu_usage".to_string(),
             labels: BTreeMap::new(),
-            time_range: super::TimeRange { start: 0, end: 100, offset: 0 },
+            time_range: crate::TimeRange {
+                start: 0,
+                end: 100,
+                offset: 0,
+            },
         };
-        
+
         let plan = planner.plan(&query);
         assert!(!plan.steps.is_empty());
     }

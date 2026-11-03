@@ -1,5 +1,5 @@
 //! Helix Query Engine - Lexer Module
-//! 
+//!
 //! This module provides the lexer for the Helix query language.
 //! Tokenizes PromQL-like query expressions.
 
@@ -12,7 +12,7 @@ pub enum Token {
     Number(f64),
     String(String),
     Identifier(String),
-    
+
     // Operators
     Plus,
     Minus,
@@ -28,7 +28,7 @@ pub enum Token {
     GreaterThanOrEqual,
     RegexMatch,
     RegexNotMatch,
-    
+
     // Delimiters
     LeftParen,
     RightParen,
@@ -38,7 +38,7 @@ pub enum Token {
     RightBracket,
     Comma,
     Dot,
-    
+
     // Keywords
     By,
     Without,
@@ -49,7 +49,7 @@ pub enum Token {
     Bool,
     Offset,
     At,
-    
+
     // Special
     Eof,
     Error(String),
@@ -113,36 +113,81 @@ impl Lexer {
             tokens: Vec::new(),
         }
     }
-    
+
     /// Tokenize the input string
     pub fn tokenize(&mut self) -> Vec<Token> {
         self.tokens.clear();
-        
+
         while self.pos < self.input.len() {
             self.skip_whitespace();
-            
+
             if self.pos >= self.input.len() {
                 break;
             }
-            
+
             let c = self.current_char();
-            
+
             match c {
-                '+' => { self.pos += 1; self.tokens.push(Token::Plus); }
-                '-' => { self.pos += 1; self.tokens.push(Token::Minus); }
-                '*' => { self.pos += 1; self.tokens.push(Token::Star); }
-                '/' => { self.pos += 1; self.tokens.push(Token::Slash); }
-                '%' => { self.pos += 1; self.tokens.push(Token::Percent); }
-                '^' => { self.pos += 1; self.tokens.push(Token::Caret); }
-                '(' => { self.pos += 1; self.tokens.push(Token::LeftParen); }
-                ')' => { self.pos += 1; self.tokens.push(Token::RightParen); }
-                '{' => { self.pos += 1; self.tokens.push(Token::LeftBrace); }
-                '}' => { self.pos += 1; self.tokens.push(Token::RightBrace); }
-                '[' => { self.pos += 1; self.tokens.push(Token::LeftBracket); }
-                ']' => { self.pos += 1; self.tokens.push(Token::RightBracket); }
-                ',' => { self.pos += 1; self.tokens.push(Token::Comma); }
-                '.' => { self.pos += 1; self.tokens.push(Token::Dot); }
-                '@' => { self.pos += 1; self.tokens.push(Token::At); }
+                '+' => {
+                    self.pos += 1;
+                    self.tokens.push(Token::Plus);
+                }
+                '-' => {
+                    self.pos += 1;
+                    self.tokens.push(Token::Minus);
+                }
+                '*' => {
+                    self.pos += 1;
+                    self.tokens.push(Token::Star);
+                }
+                '/' => {
+                    self.pos += 1;
+                    self.tokens.push(Token::Slash);
+                }
+                '%' => {
+                    self.pos += 1;
+                    self.tokens.push(Token::Percent);
+                }
+                '^' => {
+                    self.pos += 1;
+                    self.tokens.push(Token::Caret);
+                }
+                '(' => {
+                    self.pos += 1;
+                    self.tokens.push(Token::LeftParen);
+                }
+                ')' => {
+                    self.pos += 1;
+                    self.tokens.push(Token::RightParen);
+                }
+                '{' => {
+                    self.pos += 1;
+                    self.tokens.push(Token::LeftBrace);
+                }
+                '}' => {
+                    self.pos += 1;
+                    self.tokens.push(Token::RightBrace);
+                }
+                '[' => {
+                    self.pos += 1;
+                    self.tokens.push(Token::LeftBracket);
+                }
+                ']' => {
+                    self.pos += 1;
+                    self.tokens.push(Token::RightBracket);
+                }
+                ',' => {
+                    self.pos += 1;
+                    self.tokens.push(Token::Comma);
+                }
+                '.' => {
+                    self.pos += 1;
+                    self.tokens.push(Token::Dot);
+                }
+                '@' => {
+                    self.pos += 1;
+                    self.tokens.push(Token::At);
+                }
                 '=' => {
                     if self.peek() == '~' {
                         self.pos += 2;
@@ -196,37 +241,38 @@ impl Lexer {
                 }
                 _ => {
                     self.pos += 1;
-                    self.tokens.push(Token::Error(format!("unexpected character: {}", c)));
+                    self.tokens
+                        .push(Token::Error(format!("unexpected character: {}", c)));
                 }
             }
         }
-        
+
         self.tokens.push(Token::Eof);
         self.tokens.clone()
     }
-    
+
     fn current_char(&self) -> char {
         self.input.as_bytes()[self.pos] as char
     }
-    
+
     fn peek(&self) -> char {
         if self.pos + 1 >= self.input.len() {
             return '\0';
         }
         self.input.as_bytes()[self.pos + 1] as char
     }
-    
+
     fn skip_whitespace(&mut self) {
         while self.pos < self.input.len() && self.input.as_bytes()[self.pos].is_ascii_whitespace() {
             self.pos += 1;
         }
     }
-    
+
     fn tokenize_number(&mut self) {
         let start = self.pos;
         let mut has_dot = false;
         let mut has_exp = false;
-        
+
         while self.pos < self.input.len() {
             let c = self.input.as_bytes()[self.pos] as char;
             if c.is_ascii_digit() {
@@ -237,25 +283,30 @@ impl Lexer {
             } else if (c == 'e' || c == 'E') && !has_exp {
                 has_exp = true;
                 self.pos += 1;
-                if self.pos < self.input.len() && (self.input.as_bytes()[self.pos] as char == '+' || self.input.as_bytes()[self.pos] as char == '-') {
+                if self.pos < self.input.len()
+                    && (self.input.as_bytes()[self.pos] as char == '+'
+                        || self.input.as_bytes()[self.pos] as char == '-')
+                {
                     self.pos += 1;
                 }
             } else {
                 break;
             }
         }
-        
+
         let num_str = &self.input[start..self.pos];
         match num_str.parse::<f64>() {
             Ok(num) => self.tokens.push(Token::Number(num)),
-            Err(_) => self.tokens.push(Token::Error(format!("invalid number: {}", num_str))),
+            Err(_) => self
+                .tokens
+                .push(Token::Error(format!("invalid number: {}", num_str))),
         }
     }
-    
+
     fn tokenize_string(&mut self) {
         let quote = self.current_char();
         self.pos += 1; // skip opening quote
-        
+
         let mut result = String::new();
         while self.pos < self.input.len() {
             let c = self.current_char();
@@ -287,10 +338,11 @@ impl Lexer {
                 self.pos += 1;
             }
         }
-        
-        self.tokens.push(Token::Error("unterminated string".to_string()));
+
+        self.tokens
+            .push(Token::Error("unterminated string".to_string()));
     }
-    
+
     fn tokenize_identifier(&mut self) {
         let start = self.pos;
         while self.pos < self.input.len() {
@@ -301,9 +353,9 @@ impl Lexer {
                 break;
             }
         }
-        
+
         let ident = &self.input[start..self.pos];
-        
+
         // Check for keywords
         let token = match ident {
             "by" => Token::By,
@@ -316,7 +368,7 @@ impl Lexer {
             "offset" => Token::Offset,
             _ => Token::Identifier(ident.to_string()),
         };
-        
+
         self.tokens.push(token);
     }
 }
@@ -330,31 +382,31 @@ pub fn tokenize(input: &str) -> Vec<Token> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_tokenize_number() {
         let tokens = tokenize("42");
         assert_eq!(tokens[0], Token::Number(42.0));
     }
-    
+
     #[test]
     fn test_tokenize_float() {
         let tokens = tokenize("3.14");
         assert_eq!(tokens[0], Token::Number(3.14));
     }
-    
+
     #[test]
     fn test_tokenize_string() {
         let tokens = tokenize("\"hello\"");
         assert_eq!(tokens[0], Token::String("hello".to_string()));
     }
-    
+
     #[test]
     fn test_tokenize_identifier() {
         let tokens = tokenize("cpu_usage");
         assert_eq!(tokens[0], Token::Identifier("cpu_usage".to_string()));
     }
-    
+
     #[test]
     fn test_tokenize_operators() {
         let tokens = tokenize("+ - * / % ^");
@@ -365,7 +417,7 @@ mod tests {
         assert_eq!(tokens[4], Token::Percent);
         assert_eq!(tokens[5], Token::Caret);
     }
-    
+
     #[test]
     fn test_tokenize_comparison() {
         let tokens = tokenize("= != < > <= >=");
@@ -376,14 +428,14 @@ mod tests {
         assert_eq!(tokens[4], Token::LessThanOrEqual);
         assert_eq!(tokens[5], Token::GreaterThanOrEqual);
     }
-    
+
     #[test]
     fn test_tokenize_regex() {
         let tokens = tokenize("=~ !~");
         assert_eq!(tokens[0], Token::RegexMatch);
         assert_eq!(tokens[1], Token::RegexNotMatch);
     }
-    
+
     #[test]
     fn test_tokenize_delimiters() {
         let tokens = tokenize("(){}[]");
@@ -394,7 +446,7 @@ mod tests {
         assert_eq!(tokens[4], Token::LeftBracket);
         assert_eq!(tokens[5], Token::RightBracket);
     }
-    
+
     #[test]
     fn test_tokenize_keywords() {
         let tokens = tokenize("by without on ignoring");
@@ -403,7 +455,7 @@ mod tests {
         assert_eq!(tokens[2], Token::On);
         assert_eq!(tokens[3], Token::Ignoring);
     }
-    
+
     #[test]
     fn test_tokenize_complex() {
         let tokens = tokenize("rate(cpu_usage{host=\"server1\"}[5m])");
@@ -419,14 +471,14 @@ mod tests {
         assert_eq!(tokens[9], Token::Number(5.0));
         assert_eq!(tokens[10], Token::Identifier("m".to_string()));
     }
-    
+
     #[test]
     fn test_tokenize_empty() {
         let tokens = tokenize("");
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0], Token::Eof);
     }
-    
+
     #[test]
     fn test_tokenize_escape_sequences() {
         let tokens = tokenize("\"hello\\nworld\"");

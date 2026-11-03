@@ -1,12 +1,11 @@
 //! Helix Query Engine - Parser Module
-//! 
+//!
 //! This module provides a complete parser for the Helix query language.
 //! Supports instant vectors, range vectors, aggregations, and binary operations.
 
-use std::collections::BTreeMap;
 use std::fmt;
 
-use super::lexer::{Token, tokenize};
+use super::lexer::{tokenize, Token};
 
 /// AST node types
 #[derive(Debug, Clone, PartialEq)]
@@ -14,7 +13,7 @@ pub enum Expr {
     // Literals
     Number(f64),
     String(String),
-    
+
     // Identifiers and selectors
     Identifier(String),
     VectorSelector {
@@ -27,7 +26,7 @@ pub enum Expr {
         range: Duration,
         offset: Option<Duration>,
     },
-    
+
     // Aggregations
     Aggregation {
         op: AggregationOp,
@@ -35,13 +34,13 @@ pub enum Expr {
         grouping: Vec<String>,
         without: bool,
     },
-    
+
     // Function calls
     FunctionCall {
         name: String,
         args: Vec<Expr>,
     },
-    
+
     // Binary operations
     BinaryOp {
         op: BinaryOperator,
@@ -49,16 +48,16 @@ pub enum Expr {
         right: Box<Expr>,
         bool_modifier: bool,
     },
-    
+
     // Unary operations
     UnaryOp {
         op: UnaryOperator,
         expr: Box<Expr>,
     },
-    
+
     // Parentheses
     Paren(Box<Expr>),
-    
+
     // Subqueries
     Subquery {
         expr: Box<Expr>,
@@ -174,24 +173,24 @@ impl QueryParser {
         let tokens = tokenize(input);
         QueryParser { tokens, pos: 0 }
     }
-    
+
     pub fn parse(&mut self) -> Result<Expr, ParseError> {
         let expr = self.parse_expr()?;
-        
+
         if self.current() != &Token::Eof {
             return Err(ParseError::UnexpectedToken(format!("{:?}", self.current())));
         }
-        
+
         Ok(expr)
     }
-    
+
     fn parse_expr(&mut self) -> Result<Expr, ParseError> {
         self.parse_binary_op(0)
     }
-    
+
     fn parse_binary_op(&mut self, min_prec: u8) -> Result<Expr, ParseError> {
         let mut left = self.parse_unary_op()?;
-        
+
         while self.pos < self.tokens.len() {
             let op = match self.current() {
                 Token::Plus => BinaryOperator::Add,
@@ -212,16 +211,16 @@ impl QueryParser {
                 Token::Identifier(s) if s == "atan2" => BinaryOperator::Atan2,
                 _ => break,
             };
-            
+
             let prec = self.binary_precedence(op);
             if prec < min_prec {
                 break;
             }
-            
+
             self.advance();
             let bool_modifier = self.consume_bool();
             let right = self.parse_binary_op(prec + 1)?;
-            
+
             left = Expr::BinaryOp {
                 op,
                 left: Box::new(left),
@@ -229,10 +228,10 @@ impl QueryParser {
                 bool_modifier,
             };
         }
-        
+
         Ok(left)
     }
-    
+
     fn parse_unary_op(&mut self) -> Result<Expr, ParseError> {
         match self.current() {
             Token::Plus => {
@@ -254,7 +253,7 @@ impl QueryParser {
             _ => self.parse_primary(),
         }
     }
-    
+
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         match self.current().clone() {
             Token::Number(n) => {
@@ -273,31 +272,105 @@ impl QueryParser {
             }
             Token::Identifier(name) => {
                 self.advance();
-                
+
+                // Aggregation with leading grouping: `sum by (...) (...)`
+                if self.is_aggregation(&name)
+                    && (self.current() == &Token::By || self.current() == &Token::Without)
+                {
+                    let mut grouping = Vec::new();
+                    let mut without = false;
+                    if self.current() == &Token::By {
+                        self.advance();
+                        self.expect(Token::LeftParen)?;
+                        grouping = self.parse_label_list()?;
+                        self.expect(Token::RightParen)?;
+                    } else if self.current() == &Token::Without {
+                        self.advance();
+                        without = true;
+                        self.expect(Token::LeftParen)?;
+                        grouping = self.parse_label_list()?;
+                        self.expect(Token::RightParen)?;
+                    }
+                    self.expect(Token::LeftParen)?;
+                    let mut args = Vec::new();
+                    if self.current() != &Token::RightParen {
+                        args.push(self.parse_expr()?);
+                        while self.current() == &Token::Comma {
+                            self.advance();
+                            args.push(self.parse_expr()?);
+                        }
+                    }
+                    self.expect(Token::RightParen)?;
+                    let agg_op = match name.as_str() {
+                        "sum" => AggregationOp::Sum,
+                        "min" => AggregationOp::Min,
+                        "max" => AggregationOp::Max,
+                        "avg" => AggregationOp::Avg,
+                        "count" => AggregationOp::Count,
+                        "stddev" => AggregationOp::Stddev,
+                        "stdvar" => AggregationOp::Stdvar,
+                        "topk" => AggregationOp::TopK,
+                        "bottomk" => AggregationOp::BottomK,
+                        "quantile" => AggregationOp::Quantile,
+                        "group" => AggregationOp::Group,
+                        _ => return Err(ParseError::UnknownFunction(name)),
+                    };
+                    return Ok(Expr::Aggregation {
+                        op: agg_op,
+                        expr: Box::new(args.into_iter().next().unwrap_or(Expr::Number(0.0))),
+                        grouping,
+                        without,
+                    });
+                }
+
                 // Check for function call
                 if self.current() == &Token::LeftParen {
                     return self.parse_function_call(name);
                 }
-                
+
                 // Check for vector selector
                 if self.current() == &Token::LeftBrace {
-                    return self.parse_vector_selector(name);
+                    let vs = self.parse_vector_selector(name)?;
+                    if self.current() == &Token::LeftBracket {
+                        let (vs_name, vs_matchers) = match &vs {
+                            Expr::VectorSelector { name, matchers } => {
+                                (name.clone(), matchers.clone())
+                            }
+                            _ => (String::new(), Vec::new()),
+                        };
+                        self.advance();
+                        let range = self.parse_duration()?;
+                        self.expect(Token::RightBracket)?;
+                        let offset = if self.current() == &Token::Offset {
+                            self.advance();
+                            Some(self.parse_duration()?)
+                        } else {
+                            None
+                        };
+                        return Ok(Expr::MatrixSelector {
+                            name: vs_name,
+                            matchers: vs_matchers,
+                            range,
+                            offset,
+                        });
+                    }
+                    return Ok(vs);
                 }
-                
+
                 // Check for matrix selector
                 if self.current() == &Token::LeftBracket {
                     return self.parse_matrix_selector(name);
                 }
-                
+
                 Ok(Expr::Identifier(name))
             }
             _ => Err(ParseError::UnexpectedToken(format!("{:?}", self.current()))),
         }
     }
-    
+
     fn parse_function_call(&mut self, name: String) -> Result<Expr, ParseError> {
         self.expect(Token::LeftParen)?;
-        
+
         let mut args = Vec::new();
         if self.current() != &Token::RightParen {
             args.push(self.parse_expr()?);
@@ -306,17 +379,17 @@ impl QueryParser {
                 args.push(self.parse_expr()?);
             }
         }
-        
+
         self.expect(Token::RightParen)?;
-        
+
         // Check for aggregation
         if self.is_aggregation(&name) {
             return self.parse_aggregation(name, args);
         }
-        
+
         Ok(Expr::FunctionCall { name, args })
     }
-    
+
     fn parse_aggregation(&mut self, op: String, args: Vec<Expr>) -> Result<Expr, ParseError> {
         let agg_op = match op.as_str() {
             "sum" => AggregationOp::Sum,
@@ -332,11 +405,11 @@ impl QueryParser {
             "group" => AggregationOp::Group,
             _ => return Err(ParseError::UnknownFunction(op)),
         };
-        
+
         // Parse grouping
         let mut grouping = Vec::new();
         let mut without = false;
-        
+
         if self.current() == &Token::By {
             self.advance();
             self.expect(Token::LeftParen)?;
@@ -349,7 +422,7 @@ impl QueryParser {
             grouping = self.parse_label_list()?;
             self.expect(Token::RightParen)?;
         }
-        
+
         Ok(Expr::Aggregation {
             op: agg_op,
             expr: Box::new(args.into_iter().next().unwrap_or(Expr::Number(0.0))),
@@ -357,19 +430,19 @@ impl QueryParser {
             without,
         })
     }
-    
+
     fn parse_label_list(&mut self) -> Result<Vec<String>, ParseError> {
         let mut labels = Vec::new();
-        
+
         if self.current() == &Token::RightParen {
             return Ok(labels);
         }
-        
+
         if let Token::Identifier(name) = self.current().clone() {
             labels.push(name);
             self.advance();
         }
-        
+
         while self.current() == &Token::Comma {
             self.advance();
             if let Token::Identifier(name) = self.current().clone() {
@@ -379,13 +452,13 @@ impl QueryParser {
                 return Err(ParseError::ExpectedIdentifier);
             }
         }
-        
+
         Ok(labels)
     }
-    
+
     fn parse_vector_selector(&mut self, name: String) -> Result<Expr, ParseError> {
         self.expect(Token::LeftBrace)?;
-        
+
         let mut matchers = Vec::new();
         if self.current() != &Token::RightBrace {
             matchers.push(self.parse_matcher()?);
@@ -394,18 +467,18 @@ impl QueryParser {
                 matchers.push(self.parse_matcher()?);
             }
         }
-        
+
         self.expect(Token::RightBrace)?;
-        
+
         Ok(Expr::VectorSelector { name, matchers })
     }
-    
+
     fn parse_matrix_selector(&mut self, name: String) -> Result<Expr, ParseError> {
         self.expect(Token::LeftBracket)?;
-        
+
         let range = self.parse_duration()?;
         self.expect(Token::RightBracket)?;
-        
+
         // Parse optional offset
         let offset = if self.current() == &Token::Offset {
             self.advance();
@@ -413,7 +486,7 @@ impl QueryParser {
         } else {
             None
         };
-        
+
         // Parse matchers if present
         let matchers = if self.current() == &Token::LeftBrace {
             self.advance();
@@ -430,7 +503,7 @@ impl QueryParser {
         } else {
             Vec::new()
         };
-        
+
         Ok(Expr::MatrixSelector {
             name,
             matchers,
@@ -438,7 +511,7 @@ impl QueryParser {
             offset,
         })
     }
-    
+
     fn parse_matcher(&mut self) -> Result<Matcher, ParseError> {
         let name = if let Token::Identifier(n) = self.current().clone() {
             self.advance();
@@ -446,36 +519,50 @@ impl QueryParser {
         } else {
             return Err(ParseError::ExpectedIdentifier);
         };
-        
+
         let op = match self.current() {
-            Token::Equal => { self.advance(); MatchOp::Equal }
-            Token::NotEqual => { self.advance(); MatchOp::NotEqual }
-            Token::RegexMatch => { self.advance(); MatchOp::RegexMatch }
-            Token::RegexNotMatch => { self.advance(); MatchOp::RegexNotMatch }
+            Token::Equal => {
+                self.advance();
+                MatchOp::Equal
+            }
+            Token::NotEqual => {
+                self.advance();
+                MatchOp::NotEqual
+            }
+            Token::RegexMatch => {
+                self.advance();
+                MatchOp::RegexMatch
+            }
+            Token::RegexNotMatch => {
+                self.advance();
+                MatchOp::RegexNotMatch
+            }
             _ => return Err(ParseError::ExpectedOperator),
         };
-        
+
         let value = if let Token::String(s) = self.current().clone() {
             self.advance();
             s
         } else {
             return Err(ParseError::ExpectedString);
         };
-        
+
         Ok(Matcher { name, op, value })
     }
-    
+
     fn parse_duration(&mut self) -> Result<Duration, ParseError> {
+        #[allow(unused_assignments)]
         let mut value = 0.0;
+        let _ = value;
         let mut unit = DurationUnit::Seconds;
-        
+
         if let Token::Number(n) = self.current().clone() {
             value = n;
             self.advance();
         } else {
             return Err(ParseError::ExpectedNumber);
         }
-        
+
         if let Token::Identifier(u) = self.current().clone() {
             unit = match u.as_str() {
                 "ms" => DurationUnit::Milliseconds,
@@ -489,10 +576,10 @@ impl QueryParser {
             };
             self.advance();
         }
-        
+
         Ok(Duration { value, unit })
     }
-    
+
     fn consume_bool(&mut self) -> bool {
         if self.current() == &Token::Bool {
             self.advance();
@@ -501,24 +588,47 @@ impl QueryParser {
             false
         }
     }
-    
+
     fn is_aggregation(&self, name: &str) -> bool {
-        matches!(name, "sum" | "min" | "max" | "avg" | "count" | "stddev" | "stdvar" | "topk" | "bottomk" | "quantile" | "group" | "limitk" | "limit_ratio")
+        matches!(
+            name,
+            "sum"
+                | "min"
+                | "max"
+                | "avg"
+                | "count"
+                | "stddev"
+                | "stdvar"
+                | "topk"
+                | "bottomk"
+                | "quantile"
+                | "group"
+                | "limitk"
+                | "limit_ratio"
+        )
     }
-    
+
     fn binary_precedence(&self, op: BinaryOperator) -> u8 {
         match op {
             BinaryOperator::Pow => 10,
-            BinaryOperator::Mul | BinaryOperator::Div | BinaryOperator::Mod | BinaryOperator::Atan2 => 9,
+            BinaryOperator::Mul
+            | BinaryOperator::Div
+            | BinaryOperator::Mod
+            | BinaryOperator::Atan2 => 9,
             BinaryOperator::Add | BinaryOperator::Sub => 8,
-            BinaryOperator::Equal | BinaryOperator::NotEqual | BinaryOperator::GreaterThan |
-            BinaryOperator::LessThan | BinaryOperator::GreaterThanOrEqual | BinaryOperator::LessThanOrEqual => 7,
+            BinaryOperator::Equal
+            | BinaryOperator::NotEqual
+            | BinaryOperator::GreaterThan
+            | BinaryOperator::LessThan
+            | BinaryOperator::GreaterThanOrEqual
+            | BinaryOperator::LessThanOrEqual => 7,
             BinaryOperator::And => 6,
             BinaryOperator::Or | BinaryOperator::Unless => 5,
+            #[allow(unreachable_patterns)]
             _ => 0,
         }
     }
-    
+
     fn current(&self) -> &Token {
         if self.pos < self.tokens.len() {
             &self.tokens[self.pos]
@@ -526,13 +636,13 @@ impl QueryParser {
             &Token::Eof
         }
     }
-    
+
     fn advance(&mut self) {
         if self.pos < self.tokens.len() {
             self.pos += 1;
         }
     }
-    
+
     fn expect(&mut self, expected: Token) -> Result<(), ParseError> {
         if self.current() == &expected {
             self.advance();
@@ -565,7 +675,7 @@ impl fmt::Display for ParseError {
             ParseError::ExpectedNumber => write!(f, "expected number"),
             ParseError::ExpectedOperator => write!(f, "expected operator"),
             ParseError::ExpectedToken(t) => write!(f, "expected token: {}", t),
-            ParseError::UnknownFunction(f) => write!(f, "unknown function: {}", f),
+            ParseError::UnknownFunction(name) => write!(f, "unknown function: {}", name),
             ParseError::InvalidDurationUnit(u) => write!(f, "invalid duration unit: {}", u),
         }
     }
@@ -582,19 +692,19 @@ pub fn parse(input: &str) -> Result<Expr, ParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_parse_number() {
         let expr = parse("42").unwrap();
         assert_eq!(expr, Expr::Number(42.0));
     }
-    
+
     #[test]
     fn test_parse_identifier() {
         let expr = parse("cpu_usage").unwrap();
         assert_eq!(expr, Expr::Identifier("cpu_usage".to_string()));
     }
-    
+
     #[test]
     fn test_parse_vector_selector() {
         let expr = parse("cpu_usage{host=\"server1\"}").unwrap();
@@ -606,7 +716,7 @@ mod tests {
             _ => panic!("Expected VectorSelector"),
         }
     }
-    
+
     #[test]
     fn test_parse_matrix_selector() {
         let expr = parse("cpu_usage[5m]").unwrap();
@@ -618,7 +728,7 @@ mod tests {
             _ => panic!("Expected MatrixSelector"),
         }
     }
-    
+
     #[test]
     fn test_parse_function_call() {
         let expr = parse("rate(cpu_usage[5m])").unwrap();
@@ -630,12 +740,17 @@ mod tests {
             _ => panic!("Expected FunctionCall"),
         }
     }
-    
+
     #[test]
     fn test_parse_aggregation() {
         let expr = parse("sum by (host) (cpu_usage)").unwrap();
         match expr {
-            Expr::Aggregation { op, grouping, without, .. } => {
+            Expr::Aggregation {
+                op,
+                grouping,
+                without,
+                ..
+            } => {
                 assert_eq!(op, AggregationOp::Sum);
                 assert_eq!(grouping, vec!["host"]);
                 assert!(!without);
@@ -643,7 +758,7 @@ mod tests {
             _ => panic!("Expected Aggregation"),
         }
     }
-    
+
     #[test]
     fn test_parse_binary_op() {
         let expr = parse("a + b").unwrap();
@@ -654,7 +769,7 @@ mod tests {
             _ => panic!("Expected BinaryOp"),
         }
     }
-    
+
     #[test]
     fn test_parse_unary_op() {
         let expr = parse("-cpu_usage").unwrap();
@@ -665,7 +780,7 @@ mod tests {
             _ => panic!("Expected UnaryOp"),
         }
     }
-    
+
     #[test]
     fn test_parse_paren() {
         let expr = parse("(cpu_usage)").unwrap();
@@ -674,7 +789,7 @@ mod tests {
             _ => panic!("Expected Paren"),
         }
     }
-    
+
     #[test]
     fn test_parse_complex() {
         let expr = parse("sum by (host) (rate(cpu_usage{job=\"node\"}[5m]))").unwrap();
@@ -686,22 +801,31 @@ mod tests {
             _ => panic!("Expected Aggregation"),
         }
     }
-    
+
     #[test]
     fn test_parse_error() {
         let result = parse("invalid {{");
         assert!(result.is_err());
     }
-    
+
     #[test]
     fn test_duration_to_seconds() {
-        let d = Duration { value: 5.0, unit: DurationUnit::Minutes };
+        let d = Duration {
+            value: 5.0,
+            unit: DurationUnit::Minutes,
+        };
         assert_eq!(d.to_seconds(), 300.0);
-        
-        let d = Duration { value: 1.0, unit: DurationUnit::Hours };
+
+        let d = Duration {
+            value: 1.0,
+            unit: DurationUnit::Hours,
+        };
         assert_eq!(d.to_seconds(), 3600.0);
-        
-        let d = Duration { value: 1000.0, unit: DurationUnit::Milliseconds };
+
+        let d = Duration {
+            value: 1000.0,
+            unit: DurationUnit::Milliseconds,
+        };
         assert_eq!(d.to_seconds(), 1.0);
     }
 }

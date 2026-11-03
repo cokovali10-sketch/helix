@@ -1,10 +1,9 @@
 //! Helix Query Engine - Query Executor Module
-//! 
+//!
 //! This module provides the query execution engine with
 //! vectorized operations and optimization.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 /// Execution context
 #[derive(Debug, Clone)]
@@ -26,22 +25,22 @@ impl ExecutionContext {
             max_rows: 10000,
         }
     }
-    
+
     pub fn with_step(mut self, step: i64) -> Self {
         self.step = step;
         self
     }
-    
+
     pub fn with_range(mut self, range: i64) -> Self {
         self.range = range;
         self
     }
-    
+
     pub fn with_timeout(mut self, timeout: i64) -> Self {
         self.timeout = timeout;
         self
     }
-    
+
     pub fn with_max_rows(mut self, max_rows: usize) -> Self {
         self.max_rows = max_rows;
         self
@@ -98,12 +97,12 @@ impl QueryExecutor {
     pub fn new(context: ExecutionContext) -> Self {
         QueryExecutor { context }
     }
-    
+
     /// Execute an expression
-    pub fn execute(&self, expr: &str) -> Result<ExecutionResult, String> {
+    pub fn execute(&self, _expr: &str) -> Result<ExecutionResult, String> {
         let start = std::time::Instant::now();
         let elapsed = start.elapsed();
-        
+
         Ok(ExecutionResult {
             columns: vec![],
             rows: vec![],
@@ -136,16 +135,22 @@ impl QueryOptimizer {
             ],
         }
     }
-    
+
     pub fn rules(&self) -> &[String] {
         &self.rules
     }
-    
-    pub fn optimize(&self, plan: &mut QueryPlan) -> OptimizationResult {
+
+    pub fn optimize(&self, _plan: &mut QueryPlan) -> OptimizationResult {
         OptimizationResult {
             applied_rules: self.rules.clone(),
             iterations: 1,
         }
+    }
+}
+
+impl Default for QueryOptimizer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -175,46 +180,58 @@ impl QueryBuilder {
             plan: QueryPlan::default(),
         }
     }
-    
+
     pub fn scan(mut self, table: &str) -> Self {
         self.plan.steps.push(format!("scan:{}", table));
         self
     }
-    
+
     pub fn filter(mut self, predicate: &str) -> Self {
         self.plan.steps.push(format!("filter:{}", predicate));
         self
     }
-    
+
     pub fn project(mut self, columns: Vec<String>) -> Self {
-        self.plan.steps.push(format!("project:{}", columns.join(",")));
+        self.plan
+            .steps
+            .push(format!("project:{}", columns.join(",")));
         self
     }
-    
+
     pub fn aggregate(mut self, op: &str, group_by: Vec<String>) -> Self {
-        self.plan.steps.push(format!("agg:{}:{}", op, group_by.join(",")));
+        self.plan
+            .steps
+            .push(format!("agg:{}:{}", op, group_by.join(",")));
         self
     }
-    
+
     pub fn sort(mut self, columns: Vec<String>, ascending: bool) -> Self {
-        self.plan.steps.push(format!("sort:{}:{}", columns.join(","), ascending));
+        self.plan
+            .steps
+            .push(format!("sort:{}:{}", columns.join(","), ascending));
         self
     }
-    
+
     pub fn limit(mut self, count: usize) -> Self {
         self.plan.steps.push(format!("limit:{}", count));
         self
     }
-    
+
     pub fn build(self) -> QueryPlan {
         self.plan
+    }
+}
+
+impl Default for QueryBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_execution_context() {
         let ctx = ExecutionContext::new(1000)
@@ -222,14 +239,14 @@ mod tests {
             .with_range(300)
             .with_timeout(60000)
             .with_max_rows(5000);
-        
+
         assert_eq!(ctx.timestamp, 1000);
         assert_eq!(ctx.step, 10);
         assert_eq!(ctx.range, 300);
         assert_eq!(ctx.timeout, 60000);
         assert_eq!(ctx.max_rows, 5000);
     }
-    
+
     #[test]
     fn test_query_executor() {
         let ctx = ExecutionContext::new(1000);
@@ -237,13 +254,13 @@ mod tests {
         let result = executor.execute("cpu_usage").unwrap();
         assert_eq!(result.rows.len(), 0);
     }
-    
+
     #[test]
     fn test_query_optimizer() {
         let optimizer = QueryOptimizer::new();
         assert_eq!(optimizer.rules().len(), 10);
     }
-    
+
     #[test]
     fn test_query_builder() {
         let plan = QueryBuilder::new()
@@ -252,10 +269,10 @@ mod tests {
             .project(vec!["value".to_string()])
             .limit(100)
             .build();
-        
+
         assert_eq!(plan.steps.len(), 4);
     }
-    
+
     #[test]
     fn test_query_plan() {
         let plan = QueryPlan {
@@ -265,7 +282,7 @@ mod tests {
         };
         assert_eq!(plan.steps.len(), 2);
     }
-    
+
     #[test]
     fn test_execution_result() {
         let result = ExecutionResult {
@@ -277,7 +294,7 @@ mod tests {
         };
         assert_eq!(result.columns.len(), 2);
     }
-    
+
     #[test]
     fn test_execution_value() {
         let val = ExecutionValue::Float(42.0);

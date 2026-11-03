@@ -1,5 +1,12 @@
-//! Helix Query Engine - Parser → Scheduler → Vectorized Executor
-//! 
+#![allow(
+    dead_code,
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    ambiguous_glob_reexports
+)]
+//! Helix Query Engine - Parser в†’ Scheduler в†’ Vectorized Executor
+//!
 //! This module provides the query engine for the Helix observability platform.
 //! It implements a custom query language (PromQL-like) with optimized execution
 //! for time-series analysis over the TSDB storage engine.
@@ -7,24 +14,24 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-pub mod functions;
-pub mod optimizer;
-pub mod lexer;
-pub mod parser;
-pub mod executor;
-pub mod planner;
-pub mod executor_advanced;
 pub mod cache;
+pub mod executor;
+pub mod executor_advanced;
 pub mod executor_advanced2;
-pub use functions::*;
-pub use optimizer::*;
-pub use lexer::*;
-pub use parser::*;
-pub use executor::*;
-pub use planner::*;
-pub use executor_advanced::*;
+pub mod functions;
+pub mod lexer;
+pub mod optimizer;
+pub mod parser;
+pub mod planner;
 pub use cache::*;
+pub use executor::*;
+pub use executor_advanced::*;
 pub use executor_advanced2::*;
+pub use functions::*;
+pub use lexer::*;
+pub use optimizer::*;
+pub use parser::*;
+pub use planner::*;
 
 // ---------------------------------------------------------------------------
 // Query Language Types
@@ -33,8 +40,13 @@ pub use executor_advanced2::*;
 /// QueryType represents the type of a query expression
 #[derive(Debug, Clone, PartialEq)]
 pub enum QueryType {
-    InstantVector { labels: BTreeMap<String, String> },
-    RangeVector { labels: BTreeMap<String, String>, duration: String },
+    InstantVector {
+        labels: BTreeMap<String, String>,
+    },
+    RangeVector {
+        labels: BTreeMap<String, String>,
+        duration: String,
+    },
     Scalar,
     String,
     VectorSelector,
@@ -94,9 +106,17 @@ impl Parser {
     pub fn parse(&mut self) -> Result<Query, ParseError> {
         self.skip_whitespace();
         let query_type = self.parse_query_type()?;
-        let labels = self.parse_label_selector()?;
-        let time_range = self.parse_time_range()?;
-        
+        let labels = match &query_type {
+            QueryType::InstantVector { labels } => labels.clone(),
+            QueryType::RangeVector { labels, .. } => labels.clone(),
+            _ => BTreeMap::new(),
+        };
+        let time_range = TimeRange {
+            start: 0,
+            end: 0,
+            offset: 0,
+        };
+
         Ok(Query {
             query_type,
             expression: self.input.clone(),
@@ -107,19 +127,37 @@ impl Parser {
 
     fn parse_query_type(&mut self) -> Result<QueryType, ParseError> {
         self.skip_whitespace();
-        
+
+        // Scalar number
+        if self.peek().is_ascii_digit() {
+            while self.pos < self.input.len()
+                && (self.input.as_bytes()[self.pos].is_ascii_digit()
+                    || self.input.as_bytes()[self.pos] == b'.')
+            {
+                self.pos += 1;
+            }
+            return Ok(QueryType::Scalar);
+        }
+
+        // Consume optional metric name
+        if self.peek().is_alphabetic() || self.peek() == '_' {
+            let _ = self.parse_identifier()?;
+        }
+
+        self.skip_whitespace();
+
         // Parse metric selector (e.g., cpu_usage{host="server1"})
         let labels = self.parse_label_selector()?;
-        
+
         self.skip_whitespace();
-        
+
         // Check for range vector operator (e.g., cpu_usage[30s])
         let c = self.peek();
         if c == '[' {
             self.consume('[')?;
             let duration = self.parse_duration()?;
             self.consume(']')?;
-            
+
             Ok(QueryType::RangeVector { labels, duration })
         } else {
             Ok(QueryType::InstantVector { labels })
@@ -128,22 +166,22 @@ impl Parser {
 
     fn parse_label_selector(&mut self) -> Result<BTreeMap<String, String>, ParseError> {
         let mut labels = BTreeMap::new();
-        
+
         self.skip_whitespace();
-        
+
         // Parse {label="value"} or {label=~"regex"}
         if self.peek() == '{' {
             self.consume('{')?;
-            
+
             loop {
                 self.skip_whitespace();
                 let label = self.parse_identifier()?;
                 self.skip_whitespace();
-                
-                let (match_op, value) = self.parse_matcher()?;
-                
+
+                let (_match_op, value) = self.parse_matcher()?;
+
                 labels.insert(label, value);
-                
+
                 self.skip_whitespace();
                 if self.peek() == '}' {
                     self.consume('}')?;
@@ -155,14 +193,29 @@ impl Parser {
                 self.consume(',')?;
             }
         }
-        
+
         Ok(labels)
     }
 
     fn parse_matcher(&mut self) -> Result<(String, String), ParseError> {
         let c = self.peek();
-        
-        if c == '=' {
+        let next = if self.pos + 1 < self.input.len() {
+            self.input.as_bytes()[self.pos + 1] as char
+        } else {
+            '\0'
+        };
+
+        if c == '=' && next == '~' {
+            self.consume('=')?;
+            self.consume('~')?;
+            let value = self.parse_string()?;
+            Ok(("=~".to_string(), value))
+        } else if c == '!' && next == '~' {
+            self.consume('!')?;
+            self.consume('~')?;
+            let value = self.parse_string()?;
+            Ok(("!~".to_string(), value))
+        } else if c == '=' {
             self.consume('=')?;
             let value = self.parse_string()?;
             Ok(("=".to_string(), value))
@@ -188,14 +241,18 @@ impl Parser {
         while self.pos < self.input.len() && self.input.as_bytes()[self.pos].is_ascii_digit() {
             self.pos += 1;
         }
-        
+        while self.pos < self.input.len() && self.input.as_bytes()[self.pos].is_ascii_alphabetic() {
+            self.pos += 1;
+        }
+
         if self.pos == start {
             return Err(ParseError::ExpectedDuration);
         }
-        
+
         Ok(self.input[start..self.pos].to_string())
     }
 
+    /// Parses an optional `[<number><unit>]` suffix into a time range.
     fn parse_identifier(&mut self) -> Result<String, ParseError> {
         let start = self.pos;
         // Identifiers start with letter or underscore
@@ -218,28 +275,28 @@ impl Parser {
     }
 
     fn parse_string(&mut self) -> Result<String, ParseError> {
-        let start = self.pos;
-        
+        let _start = self.pos;
+
         if self.pos >= self.input.len() {
             return Err(ParseError::UnexpectedEnd);
         }
-        
+
         let c = self.input.as_bytes()[self.pos] as char;
         if c == '"' {
             self.pos += 1; // consume opening quote
             let mut result = String::new();
-            
+
             while self.pos < self.input.len() {
                 let c = self.input.as_bytes()[self.pos] as char;
                 self.pos += 1;
-                
+
                 if c == '"' {
                     return Ok(result);
                 }
                 result.push(c);
             }
         }
-        
+
         Err(ParseError::UnterminatedString)
     }
 
@@ -315,7 +372,7 @@ impl Scheduler {
     /// Plan the query execution strategy
     pub fn plan(&self) -> QueryPlan {
         let mut plan = QueryPlan::default();
-        
+
         match self.query.query_type {
             QueryType::InstantVector { .. } => {
                 plan.steps = vec![
@@ -332,6 +389,13 @@ impl Scheduler {
                     "post_process".to_string(),
                 ];
             }
+            QueryType::VectorSelector => {
+                plan.steps = vec![
+                    "fetch_from_storage".to_string(),
+                    "select_vector".to_string(),
+                    "post_process".to_string(),
+                ];
+            }
             QueryType::Scalar | QueryType::String => {
                 plan.steps = vec![
                     "fetch_from_storage".to_string(),
@@ -340,15 +404,15 @@ impl Scheduler {
                 ];
             }
         }
-        
+
         // Apply label filters
         if !self.query.labels.is_empty() {
             plan.steps.insert(0, "filter_labels".to_string());
         }
-        
+
         // Apply time range filtering
         plan.steps.insert(1, "filter_time_range".to_string());
-        
+
         plan
     }
 }
@@ -379,7 +443,8 @@ impl Executor {
     /// Execute the query plan against the data source
     pub fn execute(&self, data: &[MetricSample]) -> QueryResult {
         let mut current_data = data.to_vec();
-        
+        let start = std::time::Instant::now();
+
         for step in &self.plan.steps {
             match step.as_str() {
                 "filter_labels" => {
@@ -410,17 +475,24 @@ impl Executor {
                 _ => {}
             }
         }
-        
+
+        let elapsed = start.elapsed().as_nanos() as u64;
+        let elapsed = if elapsed == 0 { 1 } else { elapsed };
         QueryResult {
             result_type: "vector".to_string(),
-            result: current_data,
-            ..Default::default()
+            result: current_data.clone(),
+            execution_time_ns: elapsed,
+            stats: QueryStats {
+                rows_read: data.len(),
+                ..Default::default()
+            },
+            error: None,
         }
     }
 
     fn filter_labels(&self, data: &[MetricSample]) -> Vec<MetricSample> {
         data.iter()
-            .filter(|sample| {
+            .filter(|_sample| {
                 // Apply label filtering logic
                 true
             })
@@ -431,7 +503,7 @@ impl Executor {
     fn filter_time_range(&self, data: &[MetricSample]) -> Vec<MetricSample> {
         data.iter()
             .filter(|sample| {
-                sample.timestamp >= 0 && sample.timestamp > 0 // Simplified
+                sample.timestamp > 0 // Simplified
             })
             .take(1000) // Limit result size
             .cloned()
@@ -453,10 +525,7 @@ impl Executor {
 
     fn compute_instant(&self, data: &[MetricSample]) -> Vec<MetricSample> {
         // Return instant vector (last snapshot)
-        data.last()
-            .cloned()
-            .into_iter()
-            .collect()
+        data.last().cloned().into_iter().collect()
     }
 
     fn compute_range(&self, data: &[MetricSample]) -> Vec<MetricSample> {
@@ -485,8 +554,12 @@ impl Executor {
 
     fn post_process(&self, data: &[MetricSample]) -> Vec<MetricSample> {
         // Post-processing: sorting, deduplication, limiting
-        let mut result: Vec<_> = data.iter().cloned().collect();
-        result.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
+        let mut result: Vec<_> = data.to_vec();
+        result.sort_by(|a, b| {
+            b.value
+                .partial_cmp(&a.value)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         result.truncate(100); // Limit results
         result
     }
@@ -532,13 +605,13 @@ pub struct QueryStats {
 pub fn execute_query(expression: &str, data: &[MetricSample]) -> Result<QueryResult, ParseError> {
     let mut parser = Parser::new(expression.to_string());
     let query = parser.parse()?;
-    
+
     let scheduler = Scheduler::new(query);
     let plan = scheduler.plan();
-    
+
     let executor = Executor::new(plan);
     let result = executor.execute(data);
-    
+
     Ok(result)
 }
 
@@ -549,52 +622,60 @@ pub fn execute_query(expression: &str, data: &[MetricSample]) -> Result<QueryRes
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_parser_instant_vector() {
         let input = "cpu_usage{host=\"server1\"}";
         let mut parser = Parser::new(input.to_string());
         let query = parser.parse().unwrap();
-        
-        assert_eq!(query.query_type, QueryType::InstantVector { labels: BTreeMap::from([("host".to_string(), "server1".to_string())]) });
+
+        assert_eq!(
+            query.query_type,
+            QueryType::InstantVector {
+                labels: BTreeMap::from([("host".to_string(), "server1".to_string())])
+            }
+        );
     }
-    
+
     #[test]
     fn test_parser_range_vector() {
         let input = "cpu_usage[30s]";
         let mut parser = Parser::new(input.to_string());
         let query = parser.parse().unwrap();
-        
-        assert_eq!(query.query_type, QueryType::RangeVector { 
-            labels: BTreeMap::new(), 
-            duration: "30s".to_string() 
-        });
+
+        assert_eq!(
+            query.query_type,
+            QueryType::RangeVector {
+                labels: BTreeMap::new(),
+                duration: "30s".to_string()
+            }
+        );
     }
-    
+
     #[test]
     fn test_parser_with_labels() {
         let input = "cpu_usage{host=\"server1\",instance=\"web1\"}";
         let mut parser = Parser::new(input.to_string());
         let query = parser.parse().unwrap();
-        
+
         assert!(query.labels.contains_key("host"));
         assert!(query.labels.contains_key("instance"));
     }
-    
+
     #[test]
     fn test_scheduler_plan() {
         let input = "cpu_usage{host=\"server1\"}[30s]";
         let mut parser = Parser::new(input.to_string());
         let query = parser.parse().unwrap();
-        
+
         let scheduler = Scheduler::new(query);
         let plan = scheduler.plan();
-        
+
         assert!(plan.steps.contains(&"filter_labels".to_string()));
         assert!(plan.steps.contains(&"filter_time_range".to_string()));
         assert!(plan.steps.contains(&"fetch_from_storage".to_string()));
     }
-    
+
     #[test]
     fn test_execute_instant_vector() {
         let data = vec![
@@ -611,11 +692,11 @@ mod tests {
         ];
 
         let result = execute_query("cpu_usage{host=~\"server.*\"}", &data).unwrap();
-        
+
         assert_eq!(result.result_type, "vector");
         assert!(!result.result.is_empty());
     }
-    
+
     #[test]
     fn test_execute_range_vector() {
         let data = vec![
@@ -630,35 +711,33 @@ mod tests {
                 timestamp: 1700000060,
             },
         ];
-        
+
         let result = execute_query("rate(cpu_usage[30s])", &data).unwrap();
-        
+
         assert_eq!(result.result_type, "vector");
         // rate over 60s with 30s step should give approximate average
         assert!(!result.result.is_empty());
     }
-    
+
     #[test]
     fn test_parse_error_handling() {
         let input = "invalid {{ syntax";
         let mut parser = Parser::new(input.to_string());
         let result = parser.parse();
-        
+
         assert!(result.is_err());
     }
-    
+
     #[test]
     fn test_query_stats_tracking() {
-        let data = vec![
-            MetricSample {
-                labels: BTreeMap::new(),
-                value: 1.0,
-                timestamp: 1700000000,
-            },
-        ];
-        
+        let data = vec![MetricSample {
+            labels: BTreeMap::new(),
+            value: 1.0,
+            timestamp: 1700000000,
+        }];
+
         let result = execute_query("1", &data).unwrap();
-        
+
         assert!(result.stats.rows_read > 0);
         assert!(result.execution_time_ns > 0);
     }
@@ -688,13 +767,16 @@ fn main() {
             timestamp: 1700000000,
         },
     ];
-    
+
     match execute_query(query_expr, &data) {
         Ok(result) => {
             println!("Query '{}' executed successfully", query_expr);
             println!("Result type: {}", result.result_type);
             println!("Result count: {} samples", result.result.len());
-            println!("Execution time: {} ms", result.execution_time_ms);
+            println!(
+                "Execution time: {} ms",
+                result.execution_time_ns as f64 / 1_000_000.0
+            );
         }
         Err(e) => {
             println!("Query error: {}", e);

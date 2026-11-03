@@ -1,13 +1,12 @@
 //! Helix Storage Engine - SSTable Module (Advanced 3)
-//! 
+//!
 //! This module provides additional SSTable features including
 //! statistics, optimization, and monitoring.
 
 use std::collections::BTreeMap;
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::RwLock;
 
 /// SSTable statistics
 #[derive(Debug, Clone, Default)]
@@ -24,6 +23,8 @@ pub struct SSTableStats {
     pub compression_ratio: f64,
     pub avg_entry_size: f64,
     pub avg_block_size: f64,
+    pub density: f64,
+    pub space_efficiency: f64,
     pub read_count: u64,
     pub write_count: u64,
 }
@@ -32,7 +33,7 @@ impl SSTableStats {
     pub fn new() -> Self {
         SSTableStats::default()
     }
-    
+
     pub fn compute(&mut self, entries: usize, size: u64, blocks: usize) {
         self.entry_count = entries;
         self.file_size = size;
@@ -44,7 +45,7 @@ impl SSTableStats {
             self.avg_block_size = size as f64 / blocks as f64;
         }
     }
-    
+
     pub fn density(&self) -> f64 {
         if self.file_size > 0 {
             self.entry_count as f64 / self.file_size as f64
@@ -52,7 +53,7 @@ impl SSTableStats {
             0.0
         }
     }
-    
+
     pub fn space_efficiency(&self) -> f64 {
         if self.file_size > 0 {
             1.0 - (self.index_size + self.bloom_filter_size) as f64 / self.file_size as f64
@@ -101,48 +102,48 @@ impl SSTableOptimizer {
     pub fn new(config: OptimizerConfig) -> Self {
         SSTableOptimizer { config }
     }
-    
+
     pub fn optimize(&self, stats: &SSTableStats) -> OptimizationRecommendation {
         let mut recommendations = Vec::new();
-        
+
         if stats.avg_block_size > self.config.max_block_size as f64 {
             recommendations.push("Reduce block size - blocks are too large".to_string());
         }
-        
+
         if stats.avg_block_size < self.config.min_block_size as f64 {
             recommendations.push("Increase block size - blocks are too small".to_string());
         }
-        
+
         if stats.compression_ratio > 0.8 {
             recommendations.push("Compression not effective, consider disabling".to_string());
         }
-        
+
         if stats.density() < 0.001 {
             recommendations.push("Low data density, consider compaction".to_string());
         }
-        
+
         if stats.space_efficiency() < 0.8 {
             recommendations.push("High index overhead, consider larger blocks".to_string());
         }
-        
+
         let estimated_improvement = if recommendations.is_empty() {
             0.0
         } else {
             0.1 + 0.05 * recommendations.len() as f64
         };
-        
+
         OptimizationRecommendation {
             recommendations,
             estimated_improvement,
         }
     }
-    
+
     pub fn recommend_block_size(&self, avg_entry_size: f64) -> usize {
         let target_entries = self.config.target_block_size as f64 / avg_entry_size;
         let block_size = (target_entries * avg_entry_size) as usize;
         block_size.clamp(self.config.min_block_size, self.config.max_block_size)
     }
-    
+
     pub fn recommend_bloom_filter_size(&self, num_entries: usize) -> usize {
         num_entries * self.config.bloom_filter_bits_per_key
     }
@@ -168,32 +169,35 @@ impl SSTableMonitor {
             mu: RwLock::new(()),
         }
     }
-    
+
     pub fn record(&self, path: PathBuf, stats: SSTableStats) {
         let mut all_stats = self.stats.write().unwrap();
         all_stats.insert(path, stats);
     }
-    
+
     pub fn get(&self, path: &Path) -> Option<SSTableStats> {
         let all_stats = self.stats.read().unwrap();
         all_stats.get(path).cloned()
     }
-    
+
     pub fn all(&self) -> Vec<(PathBuf, SSTableStats)> {
         let all_stats = self.stats.read().unwrap();
-        all_stats.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        all_stats
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
     }
-    
+
     pub fn total_size(&self) -> u64 {
         let all_stats = self.stats.read().unwrap();
         all_stats.values().map(|s| s.file_size).sum()
     }
-    
+
     pub fn total_entries(&self) -> usize {
         let all_stats = self.stats.read().unwrap();
         all_stats.values().map(|s| s.entry_count).sum()
     }
-    
+
     pub fn avg_compression_ratio(&self) -> f64 {
         let all_stats = self.stats.read().unwrap();
         if all_stats.is_empty() {
@@ -201,6 +205,12 @@ impl SSTableMonitor {
         }
         let sum: f64 = all_stats.values().map(|s| s.compression_ratio).sum();
         sum / all_stats.len() as f64
+    }
+}
+
+impl Default for SSTableMonitor {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -242,7 +252,7 @@ impl SSTableValidator {
             ],
         }
     }
-    
+
     pub fn validate(&self) -> ValidationResult {
         let mut result = ValidationResult {
             path: self.path.clone(),
@@ -252,7 +262,7 @@ impl SSTableValidator {
             checks_passed: 0,
             checks_failed: 0,
         };
-        
+
         for check in &self.checks {
             match self.run_check(*check) {
                 Ok(()) => result.checks_passed += 1,
@@ -263,10 +273,10 @@ impl SSTableValidator {
                 }
             }
         }
-        
+
         result
     }
-    
+
     fn run_check(&self, check: ValidationCheck) -> Result<(), String> {
         match check {
             ValidationCheck::MagicNumber => Ok(()),
@@ -281,7 +291,7 @@ impl SSTableValidator {
             ValidationCheck::Footer => Ok(()),
         }
     }
-    
+
     pub fn validate_file(&self) -> bool {
         if !self.path.exists() {
             return false;
@@ -310,15 +320,15 @@ impl SSTableRepairer {
     pub fn new(path: PathBuf) -> Self {
         SSTableRepairer { path }
     }
-    
+
     pub fn repair(&self) -> io::Result<RepairResult> {
         let start = std::time::Instant::now();
-        
+
         // In production, would repair corrupted SSTable
         // For now, simulate
-        
+
         let duration = start.elapsed();
-        
+
         Ok(RepairResult {
             path: self.path.clone(),
             success: true,
@@ -345,18 +355,18 @@ impl SSTableExporter {
     pub fn new(path: PathBuf) -> Self {
         SSTableExporter { path }
     }
-    
-    pub fn export_json(&self, output_path: &Path) -> io::Result<()> {
+
+    pub fn export_json(&self, _output_path: &Path) -> io::Result<()> {
         // In production, would export SSTable as JSON
         Ok(())
     }
-    
-    pub fn export_csv(&self, output_path: &Path) -> io::Result<()> {
+
+    pub fn export_csv(&self, _output_path: &Path) -> io::Result<()> {
         // In production, would export SSTable as CSV
         Ok(())
     }
-    
-    pub fn export_parquet(&self, output_path: &Path) -> io::Result<()> {
+
+    pub fn export_parquet(&self, _output_path: &Path) -> io::Result<()> {
         // In production, would export SSTable as Parquet
         Ok(())
     }
@@ -371,18 +381,18 @@ impl SSTableImporter {
     pub fn new(path: PathBuf) -> Self {
         SSTableImporter { path }
     }
-    
-    pub fn import_json(&self, input_path: &Path) -> io::Result<()> {
+
+    pub fn import_json(&self, _input_path: &Path) -> io::Result<()> {
         // In production, would import from JSON
         Ok(())
     }
-    
-    pub fn import_csv(&self, input_path: &Path) -> io::Result<()> {
+
+    pub fn import_csv(&self, _input_path: &Path) -> io::Result<()> {
         // In production, would import from CSV
         Ok(())
     }
-    
-    pub fn import_parquet(&self, input_path: &Path) -> io::Result<()> {
+
+    pub fn import_parquet(&self, _input_path: &Path) -> io::Result<()> {
         // In production, would import from Parquet
         Ok(())
     }
@@ -392,7 +402,7 @@ impl SSTableImporter {
 mod tests {
     use super::*;
     use tempfile::tempdir;
-    
+
     #[test]
     fn test_sstable_stats() {
         let mut stats = SSTableStats::new();
@@ -403,7 +413,7 @@ mod tests {
         assert!(stats.avg_entry_size > 0.0);
         assert!(stats.avg_block_size > 0.0);
     }
-    
+
     #[test]
     fn test_sstable_stats_density() {
         let stats = SSTableStats {
@@ -413,7 +423,7 @@ mod tests {
         };
         assert!(stats.density() > 0.0);
     }
-    
+
     #[test]
     fn test_sstable_stats_space_efficiency() {
         let stats = SSTableStats {
@@ -424,7 +434,7 @@ mod tests {
         };
         assert!(stats.space_efficiency() > 0.9);
     }
-    
+
     #[test]
     fn test_optimizer_config() {
         let config = OptimizerConfig::default();
@@ -432,12 +442,12 @@ mod tests {
         assert!(config.enable_compression);
         assert!(config.enable_bloom_filter);
     }
-    
+
     #[test]
     fn test_sstable_optimizer() {
         let config = OptimizerConfig::default();
         let optimizer = SSTableOptimizer::new(config);
-        
+
         let stats = SSTableStats {
             avg_block_size: 8192.0,
             compression_ratio: 0.9,
@@ -445,87 +455,105 @@ mod tests {
             space_efficiency: 0.7,
             ..Default::default()
         };
-        
+
         let rec = optimizer.optimize(&stats);
         assert!(!rec.recommendations.is_empty());
     }
-    
+
     #[test]
     fn test_optimizer_recommend_block_size() {
         let config = OptimizerConfig::default();
         let optimizer = SSTableOptimizer::new(config);
-        
+
         let size = optimizer.recommend_block_size(100.0);
         assert!(size >= 1024 && size <= 65536);
     }
-    
+
     #[test]
     fn test_optimizer_recommend_bloom_filter_size() {
         let config = OptimizerConfig::default();
         let optimizer = SSTableOptimizer::new(config);
-        
+
         let size = optimizer.recommend_bloom_filter_size(1000);
         assert_eq!(size, 10000);
     }
-    
+
     #[test]
     fn test_sstable_monitor() {
         let monitor = SSTableMonitor::new();
-        let stats = SSTableStats { file_size: 1024, entry_count: 10, ..Default::default() };
+        let stats = SSTableStats {
+            file_size: 1024,
+            entry_count: 10,
+            ..Default::default()
+        };
         monitor.record(PathBuf::from("test.sst"), stats);
-        
+
         let got = monitor.get(&PathBuf::from("test.sst"));
         assert!(got.is_some());
     }
-    
+
     #[test]
     fn test_sstable_monitor_total() {
         let monitor = SSTableMonitor::new();
-        monitor.record(PathBuf::from("a.sst"), SSTableStats { file_size: 1024, entry_count: 10, ..Default::default() });
-        monitor.record(PathBuf::from("b.sst"), SSTableStats { file_size: 2048, entry_count: 20, ..Default::default() });
-        
+        monitor.record(
+            PathBuf::from("a.sst"),
+            SSTableStats {
+                file_size: 1024,
+                entry_count: 10,
+                ..Default::default()
+            },
+        );
+        monitor.record(
+            PathBuf::from("b.sst"),
+            SSTableStats {
+                file_size: 2048,
+                entry_count: 20,
+                ..Default::default()
+            },
+        );
+
         assert_eq!(monitor.total_size(), 3072);
         assert_eq!(monitor.total_entries(), 30);
     }
-    
+
     #[test]
     fn test_sstable_validator() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.sst");
-        
+
         let validator = SSTableValidator::new(path);
         let result = validator.validate();
         assert!(result.checks_passed > 0);
     }
-    
+
     #[test]
     fn test_sstable_repairer() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.sst");
-        
+
         let repairer = SSTableRepairer::new(path);
         let result = repairer.repair().unwrap();
         assert!(result.success);
     }
-    
+
     #[test]
     fn test_sstable_exporter() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.sst");
-        
+
         let exporter = SSTableExporter::new(path);
         assert!(exporter.export_json(&dir.path().join("out.json")).is_ok());
     }
-    
+
     #[test]
     fn test_sstable_importer() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.sst");
-        
+
         let importer = SSTableImporter::new(path);
         assert!(importer.import_json(&dir.path().join("in.json")).is_ok());
     }
-    
+
     #[test]
     fn test_validation_result() {
         let result = ValidationResult {
@@ -539,7 +567,7 @@ mod tests {
         assert!(result.valid);
         assert_eq!(result.checks_passed, 10);
     }
-    
+
     #[test]
     fn test_repair_result() {
         let result = RepairResult {
@@ -551,7 +579,7 @@ mod tests {
         assert!(result.success);
         assert_eq!(result.issues_fixed, 5);
     }
-    
+
     #[test]
     fn test_optimization_recommendation() {
         let rec = OptimizationRecommendation {
