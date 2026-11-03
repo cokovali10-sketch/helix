@@ -14,8 +14,6 @@ metadata:
     {{ end }}
 {{ end }}
 
-{{/* Helper templates */}}
-
 {{/* ConfigMap for API configuration */}}
 apiVersion: v1
 kind: ConfigMap
