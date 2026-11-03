@@ -2,7 +2,7 @@
 {{ $release := .Release }}
 {{ $chart := .Chart }}
 
-{{ /* Create namespace if specified */ }}
+{{/* Create namespace if specified */}}
 {{ if .Values.namespace }}
 apiVersion: v1
 kind: Namespace
@@ -14,7 +14,7 @@ metadata:
     {{ end }}
 {{ end }}
 
-{{ /* Helper templates */ }}
+{{/* Helper templates */}}
 
 {{ define "helix.labels" }}
 app.kubernetes.io/name: {{ include "helix.fullname" . }}
@@ -32,7 +32,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{ if .Values.fullnameOverride }}-{{ .Values.fullnameOverride }}{{ else }}-{{ .Release.Name }}-{{ .Chart.Name }}{{ end }}
 {{ end }}
 
-{{ /* ConfigMap for API configuration */ }}
+{{/* ConfigMap for API configuration */}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -49,7 +49,7 @@ data:
   NATS_URL: "nats://nats:4222"
   GIN_MODE: "{{ $cfg.ginMode | default "release" }}"
 
-{{ /* API Deployment */ }}
+{{/* API Deployment */}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -93,7 +93,7 @@ spec:
           command: ["/helix-api"]
           args: ["--config=/config/configmap/"]
 
-{{ /* API Service */ }}
+{{/* API Service */}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -112,7 +112,7 @@ spec:
   selector:
     {{ include "helix.selectorLabels" . | nindent 4 }}
 
-{{ /* Storage Deployment (Rust TSDB) */ }}
+{{/* Storage Deployment (Rust TSDB) */}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -153,7 +153,7 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
 
-{{ /* NATS Streaming for ingestion gateway */ }}
+{{/* NATS Streaming for ingestion gateway */}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -169,7 +169,7 @@ spec:
   selector:
     {{ include "helix.selectorLabels" . | nindent 4 }}
 
-{{ /* UI Deployment */ }}
+{{/* UI Deployment */}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -210,7 +210,7 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
 
-{{ /* UI Service */ }}
+{{/* UI Service */}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -226,7 +226,7 @@ spec:
   selector:
     {{ include "helix.selectorLabels" . | nindent 4 }}
 
-{{ /* Alertmanager configuration */ }}
+{{/* Alertmanager configuration */}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
