@@ -61,7 +61,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       
       - name: Check formatting
-        run: cargo fmt --check --manifest-path rust/Cargo.toml
+        run: cargo fmt --all --check --manifest-path rust/Cargo.toml
       
       - name: Clippy
         run: cargo clippy --manifest-path rust/Cargo.toml -- -D warnings

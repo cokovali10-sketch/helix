@@ -233,4 +233,3 @@ data:
             receiver: "webhook"
           - receiver: "null"
             continue: false
-{{- end }}
